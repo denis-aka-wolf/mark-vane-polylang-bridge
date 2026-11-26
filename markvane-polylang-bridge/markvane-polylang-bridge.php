@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Mark Vane Polylang Bridge
  * Description: Preserves legacy RU/EN page-pair metadata and registers translations with Polylang.
- * Version: 1.3.0
+ * Version: 1.4.0
  * Author: Mark Vane
  * License: GPL-2.0-or-later
  * Text Domain: mark-vane-polylang-bridge
@@ -13,14 +13,26 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class Mark_Vane_Polylang_Bridge {
-	const VERSION = '1.3.0';
+	const VERSION = '1.4.0';
+	const CRON_HOOK = 'mvpb_run_scheduled_sync';
+	const PAIR_CACHE_KEY = 'mvpb_pairs_cache';
+	const MANAGED_OPTION = 'mvpb_managed_pairs';
+	const IGNORED_OPTION = 'mvpb_ignored_pairs';
+	const LOG_OPTION = 'mvpb_activity_log';
 	const REST_NAMESPACE = 'mark-vane-polylang-bridge/v1';
 
 	public static function boot() {
-		add_action( 'init', array( __CLASS__, 'maybe_auto_sync' ), 99 );
+		add_action( 'admin_init', array( __CLASS__, 'maybe_schedule_initial_sync' ) );
+		add_action( self::CRON_HOOK, array( __CLASS__, 'run_scheduled_sync' ) );
+		add_action( 'added_post_meta', array( __CLASS__, 'watch_pair_metadata' ), 10, 4 );
+		add_action( 'updated_post_meta', array( __CLASS__, 'watch_pair_metadata' ), 10, 4 );
+		add_action( 'deleted_post_meta', array( __CLASS__, 'invalidate_pair_cache' ), 10, 4 );
+		add_action( 'save_post_page', array( __CLASS__, 'invalidate_pair_cache' ), 10, 1 );
 		add_action( 'admin_menu', array( __CLASS__, 'register_admin_page' ) );
 		add_action( 'admin_post_mvpb_sync', array( __CLASS__, 'handle_manual_sync' ) );
 		add_action( 'admin_post_mvpb_save_settings', array( __CLASS__, 'handle_save_settings' ) );
+		add_action( 'admin_post_mvpb_save_pair', array( __CLASS__, 'handle_save_pair' ) );
+		add_action( 'admin_post_mvpb_unlink_pair', array( __CLASS__, 'handle_unlink_pair' ) );
 		add_action( 'rest_api_init', array( __CLASS__, 'register_rest_routes' ) );
 	}
 
@@ -173,6 +185,12 @@ final class Mark_Vane_Polylang_Bridge {
 		}
 	}
 
+
+	public static function activate() {
+		if ( 1 === (int) get_option( 'mvpb_auto_sync', 1 ) && ! wp_next_scheduled( self::CRON_HOOK ) ) {
+			wp_schedule_single_event( time() + 10, self::CRON_HOOK );
+		}
+	}
 
 	public static function maybe_schedule_initial_sync() {
 		if ( get_option( 'mvpb_initial_sync_version' ) === self::VERSION ) { return; }
@@ -388,7 +406,6 @@ final class Mark_Vane_Polylang_Bridge {
 						<td><?php echo $linked ? 'связаны' : 'не связаны / конфликт языков'; ?></td>
 						<td><a class="button button-small" href="<?php echo esc_url( $edit_url ); ?>">Изменить</a>
 						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline-block" onsubmit="return confirm('Отвязать страницы? Сами страницы и исходные метаданные останутся.');"><input type="hidden" name="action" value="mvpb_unlink_pair"><input type="hidden" name="ru_id" value="<?php echo esc_attr( $pair['ru'] ); ?>"><input type="hidden" name="en_id" value="<?php echo esc_attr( $pair['en'] ); ?>"><?php wp_nonce_field( 'mvpb_unlink_pair_' . $pair['ru'] . '_' . $pair['en'] ); ?><button type="submit" class="button button-small">Отвязать</button></form></td>
-						<td><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" onsubmit="return confirm('Отвязать страницы? Сами страницы и исходные метаданные останутся.');"><input type="hidden" name="action" value="mvpb_unlink_pair"><input type="hidden" name="ru_id" value="<?php echo esc_attr( $pair['ru'] ); ?>"><input type="hidden" name="en_id" value="<?php echo esc_attr( $pair['en'] ); ?>"><?php wp_nonce_field( 'mvpb_unlink_pair_' . $pair['ru'] . '_' . $pair['en'] ); ?><button type="submit" class="button button-small">Отвязать</button></form></td>
 					</tr>
 				<?php endforeach; ?>
 				<?php if ( empty( $pairs ) ) : ?><tr><td colspan="8">Пары в метаданных не найдены.</td></tr><?php endif; ?>
@@ -410,8 +427,8 @@ final class Mark_Vane_Polylang_Bridge {
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin:12px 0 22px">
 				<input type="hidden" name="action" value="mvpb_save_settings">
 				<?php wp_nonce_field( 'mvpb_save_settings' ); ?>
-				<label><input type="checkbox" name="auto_sync" value="1" <?php checked( 1, $auto_sync ); ?>> Автоматически синхронизировать найденные пары при загрузке сайта</label>
-				<p class="description">Если выключить, связи будут обновляться только после ручного запуска синхронизации.</p>
+				<label><input type="checkbox" name="auto_sync" value="1" <?php checked( 1, $auto_sync ); ?>> Автоматически синхронизировать пары при изменении метаданных</label>
+				<p class="description">Синхронизация запускается отложенной задачей WP-Cron, а не при каждом открытии сайта.</p>
 				<?php submit_button( 'Сохранить настройки', 'secondary', 'submit', false ); ?>
 			</form>
 			<h2>Синхронизация</h2>
@@ -458,6 +475,7 @@ final class Mark_Vane_Polylang_Bridge {
 		}
 		check_admin_referer( 'mvpb_sync' );
 		self::sync_legacy_pairs();
+		self::log_activity( 'manual_sync', 0, 0, 'Ручная синхронизация запущена.' );
 		wp_safe_redirect( add_query_arg( 'mvpb_synced', '1', admin_url( 'admin.php?page=mark-vane-polylang-bridge' ) ) );
 		exit;
 	}
@@ -509,4 +527,5 @@ final class Mark_Vane_Polylang_Bridge {
 }
 
 Mark_Vane_Polylang_Bridge::boot();
+register_activation_hook( __FILE__, array( 'Mark_Vane_Polylang_Bridge', 'activate' ) );
 register_activation_hook( __FILE__, array( 'Mark_Vane_Polylang_Bridge', 'activate' ) );
