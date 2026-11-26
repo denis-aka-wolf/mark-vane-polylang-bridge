@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Mark Vane Polylang Bridge
  * Description: Preserves legacy RU/EN page-pair metadata and registers translations with Polylang.
- * Version: 1.2.0
+ * Version: 1.3.0
  * Author: Mark Vane
  * License: GPL-2.0-or-later
  * Text Domain: mark-vane-polylang-bridge
@@ -13,13 +13,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class Mark_Vane_Polylang_Bridge {
-	const VERSION = '1.2.0';
+	const VERSION = '1.3.0';
 	const REST_NAMESPACE = 'mark-vane-polylang-bridge/v1';
 
 	public static function boot() {
-		add_action( 'init', array( __CLASS__, 'sync_legacy_pairs' ), 99 );
+		add_action( 'init', array( __CLASS__, 'maybe_auto_sync' ), 99 );
 		add_action( 'admin_menu', array( __CLASS__, 'register_admin_page' ) );
 		add_action( 'admin_post_mvpb_sync', array( __CLASS__, 'handle_manual_sync' ) );
+		add_action( 'admin_post_mvpb_save_settings', array( __CLASS__, 'handle_save_settings' ) );
 		add_action( 'rest_api_init', array( __CLASS__, 'register_rest_routes' ) );
 	}
 
@@ -89,6 +90,13 @@ final class Mark_Vane_Polylang_Bridge {
 		return array_values( $pairs );
 	}
 
+	public static function maybe_auto_sync() {
+		$auto_sync = get_option( 'mvpb_auto_sync', 1 );
+		if ( 1 === (int) $auto_sync ) {
+			self::sync_legacy_pairs();
+		}
+	}
+
 	public static function sync_legacy_pairs() {
 		if ( ! function_exists( 'pll_save_post_translations' ) || ! function_exists( 'pll_get_post_language' ) || ! function_exists( 'pll_set_post_language' ) || ! function_exists( 'pll_get_post_translations' ) || ! function_exists( 'pll_languages_list' ) ) {
 			return;
@@ -137,12 +145,14 @@ final class Mark_Vane_Polylang_Bridge {
 	}
 
 	public static function register_admin_page() {
-		add_management_page(
+		add_menu_page(
 			'Polylang Bridge',
 			'Polylang Bridge',
 			'manage_options',
 			'mark-vane-polylang-bridge',
-			array( __CLASS__, 'render_admin_page' )
+			array( __CLASS__, 'render_admin_page' ),
+			'dashicons-translation',
+			58
 		);
 	}
 
@@ -151,13 +161,23 @@ final class Mark_Vane_Polylang_Bridge {
 			return;
 		}
 		$pairs = self::discover_pairs();
-		$polylang_ready = function_exists( 'pll_save_post_translations' ) && function_exists( 'pll_get_post_language' ) && function_exists( 'pll_get_post_translations' );
+		$polylang_ready = function_exists( 'pll_save_post_translations' ) && function_exists( 'pll_get_post_language' ) && function_exists( 'pll_get_post_translations' ) && function_exists( 'pll_languages_list' );
+		$auto_sync = (int) get_option( 'mvpb_auto_sync', 1 );
+		$languages = $polylang_ready ? pll_languages_list( array( 'fields' => 'slug' ) ) : array();
+		$missing_languages = $polylang_ready && ( ! in_array( 'ru', (array) $languages, true ) || ! in_array( 'en', (array) $languages, true ) );
 		?>
 		<div class="wrap">
 			<h1>Mark Vane Polylang Bridge</h1>
+			<?php if ( isset( $_GET['mvpb_saved'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Настройки сохранены.</p></div><?php endif; ?>
+			<?php if ( isset( $_GET['mvpb_synced'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Синхронизация завершена.</p></div><?php endif; ?>
 			<p>Плагин обнаруживает существующие пары страниц из старых метаданных и связывает их через штатный API Polylang. Содержимое страниц, URL, меню и исходные метаданные не изменяются.</p>
-			<p><strong>Polylang API:</strong> <?php echo $polylang_ready ? '<span style="color:green">доступен</span>' : '<span style="color:#b32d2e">недоступен</span>'; ?></p>
-			<p><strong>Найдено пар:</strong> <?php echo esc_html( count( $pairs ) ); ?></p>
+			<div style="display:flex;gap:12px;flex-wrap:wrap;margin:18px 0">
+				<div class="card" style="max-width:240px;margin:0;padding:14px 18px"><h2 style="margin:0 0 6px">Polylang API</h2><strong><?php echo $polylang_ready ? '<span style="color:#16803c">Доступен</span>' : '<span style="color:#b32d2e">Недоступен</span>'; ?></strong></div>
+				<div class="card" style="max-width:240px;margin:0;padding:14px 18px"><h2 style="margin:0 0 6px">Найдено пар</h2><strong><?php echo esc_html( count( $pairs ) ); ?></strong></div>
+				<div class="card" style="max-width:240px;margin:0;padding:14px 18px"><h2 style="margin:0 0 6px">Автосинхронизация</h2><strong><?php echo $auto_sync ? 'Включена' : 'Выключена'; ?></strong></div>
+			</div>
+			<?php if ( $missing_languages ) : ?><div class="notice notice-warning"><p>В Polylang должны быть настроены языки с кодами <code>ru</code> и <code>en</code>.</p></div><?php endif; ?>
+			
 			<table class="widefat striped">
 				<thead><tr><th>RU ID</th><th>Русская страница</th><th>Язык</th><th>EN ID</th><th>English page</th><th>Язык</th><th>Связь Polylang</th></tr></thead>
 				<tbody>
@@ -182,8 +202,17 @@ final class Mark_Vane_Polylang_Bridge {
 				<?php if ( empty( $pairs ) ) : ?><tr><td colspan="7">Пары в метаданных не найдены.</td></tr><?php endif; ?>
 				</tbody>
 			</table>
-			<?php if ( $polylang_ready ) : ?>
-				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-top:20px">
+			<h2 style="margin-top:28px">Настройки</h2>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin:12px 0 22px">
+				<input type="hidden" name="action" value="mvpb_save_settings">
+				<?php wp_nonce_field( 'mvpb_save_settings' ); ?>
+				<label><input type="checkbox" name="auto_sync" value="1" <?php checked( 1, $auto_sync ); ?>> Автоматически синхронизировать найденные пары при загрузке сайта</label>
+				<p class="description">Если выключить, связи будут обновляться только после ручного запуска синхронизации.</p>
+				<?php submit_button( 'Сохранить настройки', 'secondary', 'submit', false ); ?>
+			</form>
+			<h2>Синхронизация</h2>
+			<?php if ( $polylang_ready && ! $missing_languages ) : ?>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-top:12px">
 					<input type="hidden" name="action" value="mvpb_sync">
 					<?php wp_nonce_field( 'mvpb_sync' ); ?>
 					<?php submit_button( 'Синхронизировать пары с Polylang', 'primary', 'submit', false ); ?>
@@ -195,13 +224,23 @@ final class Mark_Vane_Polylang_Bridge {
 		<?php
 	}
 
+	public static function handle_save_settings() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Недостаточно прав.', 'mark-vane-polylang-bridge' ), 403 );
+		}
+		check_admin_referer( 'mvpb_save_settings' );
+		update_option( 'mvpb_auto_sync', isset( $_POST['auto_sync'] ) ? 1 : 0, false );
+		wp_safe_redirect( add_query_arg( 'mvpb_saved', '1', admin_url( 'admin.php?page=mark-vane-polylang-bridge' ) ) );
+		exit;
+	}
+
 	public static function handle_manual_sync() {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Недостаточно прав.', 'mark-vane-polylang-bridge' ), 403 );
 		}
 		check_admin_referer( 'mvpb_sync' );
 		self::sync_legacy_pairs();
-		wp_safe_redirect( add_query_arg( 'mvpb_synced', '1', admin_url( 'tools.php?page=mark-vane-polylang-bridge' ) ) );
+		wp_safe_redirect( add_query_arg( 'mvpb_synced', '1', admin_url( 'admin.php?page=mark-vane-polylang-bridge' ) ) );
 		exit;
 	}
 
