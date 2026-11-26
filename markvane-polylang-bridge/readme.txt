@@ -3,7 +3,7 @@ Contributors: markvane
 Tags: polylang, multilingual, translations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 1.4.4
+Stable tag: 1.4.5
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
 
@@ -51,6 +51,11 @@ Both endpoints require the manage_options capability.
 * PHP 7.4+
 
 == Changelog ==
+
+= 1.4.5 =
+* REST synchronization returns real counters and an accurate success status.
+* Return explicit errors for unavailable Polylang, skipped or failed pairs, and unexpected exceptions.
+* Record REST synchronization outcomes in the activity log.
 
 = 1.4.4 =
 * Report real synchronization totals instead of a generic started message.
