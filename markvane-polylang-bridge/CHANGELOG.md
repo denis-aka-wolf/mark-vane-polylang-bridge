@@ -1,3 +1,8 @@
+## 1.4.2
+- Add an admin-side synchronization fallback, throttled to one run per minute, for hosts where WP-Cron is delayed or disabled.
+- Verify every saved RU/EN relationship from both page records.
+- Log successful and failed synchronization outcomes for easier diagnosis.
+
 ## 1.4.1
 - Validate legacy pair metadata before accepting it, including strict numeric page IDs and ownership by one of the referenced pages.
 - Schedule automatic synchronization for both JSON and PHP-serialized legacy pair metadata.
