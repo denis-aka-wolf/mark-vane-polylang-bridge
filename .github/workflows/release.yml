@@ -27,8 +27,7 @@ jobs:
       - name: Build installable plugin ZIP
         run: |
           mkdir -p dist
-          cd markvane-polylang-bridge
-          zip -r ../dist/markvane-polylang-bridge-1.4.0.zip .
+          zip -r dist/markvane-polylang-bridge-1.4.0.zip markvane-polylang-bridge
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
