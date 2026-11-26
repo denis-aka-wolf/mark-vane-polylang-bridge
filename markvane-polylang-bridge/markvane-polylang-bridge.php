@@ -147,6 +147,17 @@ final class Mark_Vane_Polylang_Bridge {
 				continue;
 			}
 
+
+			$ru_translations = pll_get_post_translations( $ru_id );
+			$en_translations = pll_get_post_translations( $en_id );
+			foreach ( array( (array) $ru_translations, (array) $en_translations ) as $translation_map ) {
+				foreach ( $translation_map as $translation_id ) {
+					if ( (int) $translation_id !== $ru_id && (int) $translation_id !== $en_id ) {
+						continue 2;
+					}
+				}
+			}
+
 			$current = pll_get_post_translations( $ru_id );
 			if ( is_array( $current ) && isset( $current['ru'], $current['en'] )
 				&& (int) $current['ru'] === $ru_id && (int) $current['en'] === $en_id ) {
@@ -199,6 +210,96 @@ final class Mark_Vane_Polylang_Bridge {
 			'message' => sanitize_text_field( $message ),
 		) );
 		update_option( self::LOG_OPTION, array_slice( $log, 0, 100 ), false );
+	}
+
+
+	public static function handle_save_pair() {
+		if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'Недостаточно прав.', 403 ); }
+		check_admin_referer( 'mvpb_save_pair' );
+		$ru_id = isset( $_POST['ru_id'] ) ? absint( $_POST['ru_id'] ) : 0;
+		$en_id = isset( $_POST['en_id'] ) ? absint( $_POST['en_id'] ) : 0;
+		$ru = get_post( $ru_id );
+		$en = get_post( $en_id );
+		if ( ! $ru || ! $en || 'page' !== $ru->post_type || 'page' !== $en->post_type || $ru_id === $en_id ) {
+			wp_die( 'Выберите две разные существующие страницы.', 400 );
+		}
+		if ( ! function_exists( 'pll_get_post_language' ) || ! function_exists( 'pll_set_post_language' ) || ! function_exists( 'pll_save_post_translations' ) || ! function_exists( 'pll_get_post_translations' ) || ! function_exists( 'pll_languages_list' ) ) {
+			wp_die( 'Polylang API недоступен.', 503 );
+		}
+		$languages = pll_languages_list( array( 'fields' => 'slug' ) );
+		if ( ! in_array( 'ru', (array) $languages, true ) || ! in_array( 'en', (array) $languages, true ) ) {
+			wp_die( 'В Polylang должны быть настроены языки ru и en.', 400 );
+		}
+		$ru_lang = pll_get_post_language( $ru_id, 'slug' );
+		$en_lang = pll_get_post_language( $en_id, 'slug' );
+		if ( ( $ru_lang && 'ru' !== $ru_lang ) || ( $en_lang && 'en' !== $en_lang ) ) {
+			wp_die( 'У выбранной страницы уже назначен другой язык. Сначала исправьте его в Polylang.', 409 );
+		}
+		$ru_map = (array) pll_get_post_translations( $ru_id );
+		$en_map = (array) pll_get_post_translations( $en_id );
+		foreach ( array( $ru_map, $en_map ) as $map ) {
+			foreach ( $map as $translation_id ) {
+				if ( (int) $translation_id !== $ru_id && (int) $translation_id !== $en_id ) {
+					wp_die( 'Одна из страниц уже входит в другую группу переводов. Объединение групп запрещено.', 409 );
+				}
+			}
+		}
+		if ( ! $ru_lang ) { pll_set_post_language( $ru_id, 'ru' ); }
+		if ( ! $en_lang ) { pll_set_post_language( $en_id, 'en' ); }
+		pll_save_post_translations( array( 'ru' => $ru_id, 'en' => $en_id ) );
+		$check = pll_get_post_translations( $ru_id );
+		if ( ! is_array( $check ) || ! isset( $check['en'] ) || (int) $check['en'] !== $en_id ) {
+			wp_die( 'Polylang не подтвердил создание связи. Проверьте пару вручную.', 500 );
+		}
+		$key = $ru_id . ':' . $en_id;
+		$managed = get_option( self::MANAGED_OPTION, array() );
+		$managed[ $key ] = array( 'ru' => $ru_id, 'en' => $en_id );
+		update_option( self::MANAGED_OPTION, $managed, false );
+		$ignored = get_option( self::IGNORED_OPTION, array() );
+		unset( $ignored[ $key ] );
+		update_option( self::IGNORED_OPTION, $ignored, false );
+		self::invalidate_pair_cache();
+		self::log_activity( 'pair_created', $ru_id, $en_id, 'Пара создана через панель управления.' );
+		wp_safe_redirect( add_query_arg( 'mvpb_saved_pair', '1', admin_url( 'admin.php?page=mark-vane-polylang-bridge' ) ) );
+		exit;
+	}
+
+	public static function handle_unlink_pair() {
+		if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'Недостаточно прав.', 403 ); }
+		$ru_id = isset( $_POST['ru_id'] ) ? absint( $_POST['ru_id'] ) : 0;
+		$en_id = isset( $_POST['en_id'] ) ? absint( $_POST['en_id'] ) : 0;
+		check_admin_referer( 'mvpb_unlink_pair_' . $ru_id . '_' . $en_id );
+		if ( ! function_exists( 'pll_get_post_translations' ) || ! function_exists( 'pll_save_post_translations' ) ) {
+			wp_die( 'Polylang API недоступен.', 503 );
+		}
+		$ru_map = (array) pll_get_post_translations( $ru_id );
+		$en_map = (array) pll_get_post_translations( $en_id );
+		if ( count( $ru_map ) > 2 || count( $en_map ) > 2 ) {
+			wp_die( 'Группа содержит дополнительные языки. Для безопасности отвяжите её через Polylang.', 409 );
+		}
+		if ( isset( $ru_map['en'] ) && (int) $ru_map['en'] === $en_id ) {
+			pll_save_post_translations( array( 'ru' => $ru_id ) );
+		}
+		if ( isset( $en_map['ru'] ) && (int) $en_map['ru'] === $ru_id ) {
+			pll_save_post_translations( array( 'en' => $en_id ) );
+		}
+		$after_ru = (array) pll_get_post_translations( $ru_id );
+		$after_en = (array) pll_get_post_translations( $en_id );
+		if ( ( isset( $after_ru['en'] ) && (int) $after_ru['en'] === $en_id )
+			|| ( isset( $after_en['ru'] ) && (int) $after_en['ru'] === $ru_id ) ) {
+			wp_die( 'Polylang не подтвердил отвязку. Данные не удалены.', 500 );
+		}
+		$key = $ru_id . ':' . $en_id;
+		$managed = get_option( self::MANAGED_OPTION, array() );
+		unset( $managed[ $key ] );
+		update_option( self::MANAGED_OPTION, $managed, false );
+		$ignored = get_option( self::IGNORED_OPTION, array() );
+		$ignored[ $key ] = time();
+		update_option( self::IGNORED_OPTION, $ignored, false );
+		self::invalidate_pair_cache();
+		self::log_activity( 'pair_unlinked', $ru_id, $en_id, 'Связь удалена; страницы и legacy metadata сохранены.' );
+		wp_safe_redirect( add_query_arg( 'mvpb_unlinked', '1', admin_url( 'admin.php?page=mark-vane-polylang-bridge' ) ) );
+		exit;
 	}
 
 	public static function register_admin_page() {
