@@ -144,6 +144,45 @@ final class Mark_Vane_Polylang_Bridge {
 		}
 	}
 
+
+	public static function maybe_schedule_initial_sync() {
+		if ( get_option( 'mvpb_initial_sync_version' ) === self::VERSION ) { return; }
+		if ( 1 === (int) get_option( 'mvpb_auto_sync', 1 ) && ! wp_next_scheduled( self::CRON_HOOK ) ) {
+			wp_schedule_single_event( time() + 10, self::CRON_HOOK );
+		}
+		update_option( 'mvpb_initial_sync_version', self::VERSION, false );
+	}
+
+	public static function invalidate_pair_cache() {
+		delete_transient( self::PAIR_CACHE_KEY );
+	}
+
+	public static function watch_pair_metadata( $meta_id, $post_id, $meta_key, $meta_value ) {
+		self::invalidate_pair_cache();
+		if ( ! is_string( $meta_value ) || 1 !== (int) get_option( 'mvpb_auto_sync', 1 ) ) { return; }
+		$pair = json_decode( $meta_value, true );
+		if ( is_array( $pair ) && ! empty( $pair['ru'] ) && ! empty( $pair['en'] ) && ! wp_next_scheduled( self::CRON_HOOK ) ) {
+			wp_schedule_single_event( time() + 15, self::CRON_HOOK );
+		}
+	}
+
+	public static function run_scheduled_sync() {
+		if ( 1 === (int) get_option( 'mvpb_auto_sync', 1 ) ) { self::sync_legacy_pairs(); }
+	}
+
+	private static function log_activity( $action, $ru_id, $en_id, $message ) {
+		$log = get_option( self::LOG_OPTION, array() );
+		if ( ! is_array( $log ) ) { $log = array(); }
+		array_unshift( $log, array(
+			'time' => current_time( 'mysql' ),
+			'action' => sanitize_key( $action ),
+			'ru' => absint( $ru_id ),
+			'en' => absint( $en_id ),
+			'message' => sanitize_text_field( $message ),
+		) );
+		update_option( self::LOG_OPTION, array_slice( $log, 0, 100 ), false );
+	}
+
 	public static function register_admin_page() {
 		add_menu_page(
 			'Polylang Bridge',
