@@ -218,6 +218,8 @@ final class Mark_Vane_Polylang_Bridge {
 		check_admin_referer( 'mvpb_save_pair' );
 		$ru_id = isset( $_POST['ru_id'] ) ? absint( $_POST['ru_id'] ) : 0;
 		$en_id = isset( $_POST['en_id'] ) ? absint( $_POST['en_id'] ) : 0;
+		$old_ru = isset( $_POST['old_ru_id'] ) ? absint( $_POST['old_ru_id'] ) : 0;
+		$old_en = isset( $_POST['old_en_id'] ) ? absint( $_POST['old_en_id'] ) : 0;
 		$ru = get_post( $ru_id );
 		$en = get_post( $en_id );
 		if ( ! $ru || ! $en || 'page' !== $ru->post_type || 'page' !== $en->post_type || $ru_id === $en_id ) {
@@ -230,9 +232,24 @@ final class Mark_Vane_Polylang_Bridge {
 		if ( ! in_array( 'ru', (array) $languages, true ) || ! in_array( 'en', (array) $languages, true ) ) {
 			wp_die( 'В Polylang должны быть настроены языки ru и en.', 400 );
 		}
+		if ( $old_ru && $old_en && ( $old_ru !== $ru_id || $old_en !== $en_id ) ) {
+			$known = false;
+			foreach ( self::discover_pairs( true ) as $known_pair ) {
+				if ( (int) $known_pair['ru'] === $old_ru && (int) $known_pair['en'] === $old_en ) { $known = true; break; }
+			}
+			if ( ! $known ) { wp_die( 'Исходная пара не найдена. Обновите страницу.', 404 ); }
+			$old_ru_map = (array) pll_get_post_translations( $old_ru );
+			$old_en_map = (array) pll_get_post_translations( $old_en );
+			if ( count( $old_ru_map ) > 2 || count( $old_en_map ) > 2 ) {
+				wp_die( 'Исходная пара входит в группу с дополнительными языками. Измените её через Polylang.', 409 );
+			}
+			if ( isset( $old_ru_map['en'] ) && (int) $old_ru_map['en'] === $old_en ) { pll_save_post_translations( array( 'ru' => $old_ru ) ); }
+			if ( isset( $old_en_map['ru'] ) && (int) $old_en_map['ru'] === $old_ru ) { pll_save_post_translations( array( 'en' => $old_en ) ); }
+		}
 		$ru_lang = pll_get_post_language( $ru_id, 'slug' );
 		$en_lang = pll_get_post_language( $en_id, 'slug' );
 		if ( ( $ru_lang && 'ru' !== $ru_lang ) || ( $en_lang && 'en' !== $en_lang ) ) {
+			if ( $old_ru && $old_en ) { pll_save_post_translations( array( 'ru' => $old_ru, 'en' => $old_en ) ); }
 			wp_die( 'У выбранной страницы уже назначен другой язык. Сначала исправьте его в Polylang.', 409 );
 		}
 		$ru_map = (array) pll_get_post_translations( $ru_id );
@@ -240,6 +257,7 @@ final class Mark_Vane_Polylang_Bridge {
 		foreach ( array( $ru_map, $en_map ) as $map ) {
 			foreach ( $map as $translation_id ) {
 				if ( (int) $translation_id !== $ru_id && (int) $translation_id !== $en_id ) {
+					if ( $old_ru && $old_en ) { pll_save_post_translations( array( 'ru' => $old_ru, 'en' => $old_en ) ); }
 					wp_die( 'Одна из страниц уже входит в другую группу переводов. Объединение групп запрещено.', 409 );
 				}
 			}
@@ -249,7 +267,17 @@ final class Mark_Vane_Polylang_Bridge {
 		pll_save_post_translations( array( 'ru' => $ru_id, 'en' => $en_id ) );
 		$check = pll_get_post_translations( $ru_id );
 		if ( ! is_array( $check ) || ! isset( $check['en'] ) || (int) $check['en'] !== $en_id ) {
+			if ( $old_ru && $old_en ) { pll_save_post_translations( array( 'ru' => $old_ru, 'en' => $old_en ) ); }
 			wp_die( 'Polylang не подтвердил создание связи. Проверьте пару вручную.', 500 );
+		}
+		if ( $old_ru && $old_en && ( $old_ru !== $ru_id || $old_en !== $en_id ) ) {
+			$old_key = $old_ru . ':' . $old_en;
+			$managed_old = get_option( self::MANAGED_OPTION, array() );
+			unset( $managed_old[ $old_key ] );
+			update_option( self::MANAGED_OPTION, $managed_old, false );
+			$ignored_old = get_option( self::IGNORED_OPTION, array() );
+			$ignored_old[ $old_key ] = time();
+			update_option( self::IGNORED_OPTION, $ignored_old, false );
 		}
 		$key = $ru_id . ':' . $en_id;
 		$managed = get_option( self::MANAGED_OPTION, array() );
@@ -259,7 +287,7 @@ final class Mark_Vane_Polylang_Bridge {
 		unset( $ignored[ $key ] );
 		update_option( self::IGNORED_OPTION, $ignored, false );
 		self::invalidate_pair_cache();
-		self::log_activity( 'pair_created', $ru_id, $en_id, 'Пара создана через панель управления.' );
+		self::log_activity( $old_ru ? 'pair_updated' : 'pair_created', $ru_id, $en_id, $old_ru ? 'Пара переводов обновлена.' : 'Пара создана через панель управления.' );
 		wp_safe_redirect( add_query_arg( 'mvpb_saved_pair', '1', admin_url( 'admin.php?page=mark-vane-polylang-bridge' ) ) );
 		exit;
 	}
@@ -348,6 +376,7 @@ final class Mark_Vane_Polylang_Bridge {
 					$en_lang = $polylang_ready ? pll_get_post_language( $pair['en'], 'slug' ) : '';
 					$translations = $polylang_ready ? pll_get_post_translations( $pair['ru'] ) : array();
 					$linked = is_array( $translations ) && isset( $translations['en'] ) && (int) $translations['en'] === (int) $pair['en'];
+					$edit_url = add_query_arg( array( 'page' => 'mark-vane-polylang-bridge', 'mvpb_edit_ru' => $pair['ru'], 'mvpb_edit_en' => $pair['en'] ), admin_url( 'admin.php' ) );
 					?>
 					<tr>
 						<td><?php echo esc_html( $pair['ru'] ); ?></td>
@@ -357,19 +386,25 @@ final class Mark_Vane_Polylang_Bridge {
 						<td><?php echo esc_html( $en ? $en->post_title : '' ); ?></td>
 						<td><?php echo esc_html( $en_lang ? $en_lang : 'не назначен' ); ?></td>
 						<td><?php echo $linked ? 'связаны' : 'не связаны / конфликт языков'; ?></td>
+						<td><a class="button button-small" href="<?php echo esc_url( $edit_url ); ?>">Изменить</a>
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline-block" onsubmit="return confirm('Отвязать страницы? Сами страницы и исходные метаданные останутся.');"><input type="hidden" name="action" value="mvpb_unlink_pair"><input type="hidden" name="ru_id" value="<?php echo esc_attr( $pair['ru'] ); ?>"><input type="hidden" name="en_id" value="<?php echo esc_attr( $pair['en'] ); ?>"><?php wp_nonce_field( 'mvpb_unlink_pair_' . $pair['ru'] . '_' . $pair['en'] ); ?><button type="submit" class="button button-small">Отвязать</button></form></td>
 						<td><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" onsubmit="return confirm('Отвязать страницы? Сами страницы и исходные метаданные останутся.');"><input type="hidden" name="action" value="mvpb_unlink_pair"><input type="hidden" name="ru_id" value="<?php echo esc_attr( $pair['ru'] ); ?>"><input type="hidden" name="en_id" value="<?php echo esc_attr( $pair['en'] ); ?>"><?php wp_nonce_field( 'mvpb_unlink_pair_' . $pair['ru'] . '_' . $pair['en'] ); ?><button type="submit" class="button button-small">Отвязать</button></form></td>
 					</tr>
 				<?php endforeach; ?>
 				<?php if ( empty( $pairs ) ) : ?><tr><td colspan="8">Пары в метаданных не найдены.</td></tr><?php endif; ?>
 				</tbody>
 			</table>
-			<h2 style="margin-top:28px">Добавить пару переводов</h2>
+			<h2 style="margin-top:28px"><?php echo ( isset( $_GET['mvpb_edit_ru'] ) && isset( $_GET['mvpb_edit_en'] ) ) ? 'Изменить пару переводов' : 'Добавить пару переводов'; ?></h2>
 			<p>Выберите две существующие страницы. Языки назначаются только если они ещё не заданы. Конфликтующие языки и существующие группы переводов не перезаписываются.</p>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-				<input type="hidden" name="action" value="mvpb_save_pair"><?php wp_nonce_field( 'mvpb_save_pair' ); ?>
-				<table class="form-table"><tr><th>Русская страница</th><td><?php wp_dropdown_pages( array( 'name' => 'ru_id', 'show_option_none' => 'Выберите страницу RU', 'post_status' => array( 'publish', 'private', 'draft', 'pending', 'future' ) ) ); ?></td></tr>
-				<tr><th>English page</th><td><?php wp_dropdown_pages( array( 'name' => 'en_id', 'show_option_none' => 'Select English page', 'post_status' => array( 'publish', 'private', 'draft', 'pending', 'future' ) ) ); ?></td></tr></table>
-				<?php submit_button( 'Создать связь' ); ?>
+				<input type="hidden" name="action" value="mvpb_save_pair">
+				<input type="hidden" name="old_ru_id" value="<?php echo isset( $_GET['mvpb_edit_ru'] ) ? absint( $_GET['mvpb_edit_ru'] ) : 0; ?>">
+				<input type="hidden" name="old_en_id" value="<?php echo isset( $_GET['mvpb_edit_en'] ) ? absint( $_GET['mvpb_edit_en'] ) : 0; ?>">
+				<?php wp_nonce_field( 'mvpb_save_pair' ); ?>
+				<table class="form-table"><tr><th>Русская страница</th><td><?php wp_dropdown_pages( array( 'name' => 'ru_id', 'selected' => isset( $_GET['mvpb_edit_ru'] ) ? absint( $_GET['mvpb_edit_ru'] ) : 0, 'show_option_none' => 'Выберите страницу RU', 'post_status' => array( 'publish', 'private', 'draft', 'pending', 'future' ) ) ); ?></td></tr>
+				<tr><th>English page</th><td><?php wp_dropdown_pages( array( 'name' => 'en_id', 'selected' => isset( $_GET['mvpb_edit_en'] ) ? absint( $_GET['mvpb_edit_en'] ) : 0, 'show_option_none' => 'Select English page', 'post_status' => array( 'publish', 'private', 'draft', 'pending', 'future' ) ) ); ?></td></tr></table>
+				<?php submit_button( ( isset( $_GET['mvpb_edit_ru'] ) && isset( $_GET['mvpb_edit_en'] ) ) ? 'Сохранить изменения' : 'Создать связь' ); ?>
+				<?php if ( isset( $_GET['mvpb_edit_ru'] ) ) : ?><a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=mark-vane-polylang-bridge' ) ); ?>">Отмена</a><?php endif; ?>
 			</form>
 			<h2 style="margin-top:28px">Настройки</h2>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin:12px 0 22px">
