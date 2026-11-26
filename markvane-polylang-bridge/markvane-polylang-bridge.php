@@ -1,11 +1,13 @@
 <?php
 /**
  * Plugin Name: Mark Vane Polylang Bridge
- * Description: Preserves legacy RU/EN page-pair metadata and registers translations with Polylang.
+ * Description: Safely manages RU/EN translation pairs through Polylang.
  * Version: 1.4.0
  * Author: Mark Vane
  * License: GPL-2.0-or-later
  * Text Domain: mark-vane-polylang-bridge
+ * Requires at least: 6.0
+ * Requires PHP: 7.4
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -212,8 +214,8 @@ final class Mark_Vane_Polylang_Bridge {
 
 	public static function watch_pair_metadata( $meta_id, $post_id, $meta_key, $meta_value ) {
 		self::invalidate_pair_cache();
-		if ( ! is_string( $meta_value ) || 1 !== (int) get_option( 'mvpb_auto_sync', 1 ) ) { return; }
-		$pair = json_decode( $meta_value, true );
+		if ( 1 !== (int) get_option( 'mvpb_auto_sync', 1 ) ) { return; }
+		$pair = is_string( $meta_value ) ? json_decode( $meta_value, true ) : $meta_value;
 		if ( is_array( $pair ) && ! empty( $pair['ru'] ) && ! empty( $pair['en'] ) && ! wp_next_scheduled( self::CRON_HOOK ) ) {
 			wp_schedule_single_event( time() + 15, self::CRON_HOOK );
 		}
@@ -324,15 +326,23 @@ final class Mark_Vane_Polylang_Bridge {
 		if ( ! function_exists( 'pll_get_post_translations' ) || ! function_exists( 'pll_save_post_translations' ) ) {
 			wp_die( 'Polylang API недоступен.', 503 );
 		}
+		$ru_post = get_post( $ru_id );
+		$en_post = get_post( $en_id );
+		if ( ! $ru_post || ! $en_post || 'page' !== $ru_post->post_type || 'page' !== $en_post->post_type || $ru_id === $en_id ) {
+			wp_die( 'Некорректная пара страниц.', 400 );
+		}
 		$ru_map = (array) pll_get_post_translations( $ru_id );
 		$en_map = (array) pll_get_post_translations( $en_id );
+		$ru_has_en = isset( $ru_map['en'] ) && (int) $ru_map['en'] === $en_id;
+		$en_has_ru = isset( $en_map['ru'] ) && (int) $en_map['ru'] === $ru_id;
+		if ( $ru_has_en !== $en_has_ru ) {
+			wp_die( 'Связи Polylang несимметричны. Автоматическая отвязка отменена.', 409 );
+		}
 		if ( count( $ru_map ) > 2 || count( $en_map ) > 2 ) {
 			wp_die( 'Группа содержит дополнительные языки. Для безопасности отвяжите её через Polylang.', 409 );
 		}
-		if ( isset( $ru_map['en'] ) && (int) $ru_map['en'] === $en_id ) {
+		if ( $ru_has_en ) {
 			pll_save_post_translations( array( 'ru' => $ru_id ) );
-		}
-		if ( isset( $en_map['ru'] ) && (int) $en_map['ru'] === $ru_id ) {
 			pll_save_post_translations( array( 'en' => $en_id ) );
 		}
 		$after_ru = (array) pll_get_post_translations( $ru_id );
