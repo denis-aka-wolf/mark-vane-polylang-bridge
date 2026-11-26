@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Mark Vane Polylang Bridge
  * Description: Safely manages RU/EN translation pairs through Polylang.
- * Version: 1.4.4
+ * Version: 1.4.5
  * Author: Mark Vane
  * License: GPL-2.0-or-later
  * Text Domain: mark-vane-polylang-bridge
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class Mark_Vane_Polylang_Bridge {
-	const VERSION = '1.4.4';
+	const VERSION = '1.4.5';
 	const CRON_HOOK = 'mvpb_run_scheduled_sync';
 	const PAIR_CACHE_KEY = 'mvpb_pairs_cache';
 	const MANAGED_OPTION = 'mvpb_managed_pairs';
@@ -671,11 +671,52 @@ final class Mark_Vane_Polylang_Bridge {
 	}
 
 	public static function rest_sync_pairs() {
-		if ( ! function_exists( 'pll_save_post_translations' ) ) {
-			return new WP_Error( 'mvpb_polylang_unavailable', 'Polylang API недоступен.', array( 'status' => 503 ) );
+		try {
+			$stats = self::sync_legacy_pairs();
+		} catch ( Throwable $exception ) {
+			self::log_activity( 'rest_sync_failed', 0, 0, 'REST-синхронизация прервана из-за внутренней ошибки.' );
+			return new WP_Error(
+				'mvpb_sync_exception',
+				'Не удалось завершить синхронизацию из-за внутренней ошибки.',
+				array( 'status' => 500 )
+			);
 		}
-		self::sync_legacy_pairs();
-		return rest_ensure_response( array( 'success' => true, 'pairs' => self::discover_pairs() ) );
+
+		if ( empty( $stats['api_available'] ) ) {
+			$message = isset( $stats['error'] ) ? $stats['error'] : 'Polylang API недоступен.';
+			self::log_activity( 'rest_sync_unavailable', 0, 0, $message );
+			return new WP_Error(
+				'mvpb_polylang_unavailable',
+				$message,
+				array( 'status' => 503, 'stats' => $stats )
+			);
+		}
+
+		$success = 0 === (int) $stats['failed'] && 0 === (int) $stats['skipped'];
+		$message = sprintf(
+			'Проверено: %1$d; уже связаны: %2$d; восстановлено: %3$d; пропущено: %4$d; ошибок: %5$d.',
+			$stats['total'],
+			$stats['already_linked'],
+			$stats['repaired'],
+			$stats['skipped'],
+			$stats['failed']
+		);
+		self::log_activity( $success ? 'rest_sync_success' : 'rest_sync_incomplete', 0, 0, $message );
+
+		$response = rest_ensure_response(
+			array(
+				'success' => $success,
+				'message' => $message,
+				'stats' => $stats,
+				'pairs' => self::discover_pairs( true ),
+			)
+		);
+
+		if ( ! $success ) {
+			$response->set_status( 409 );
+		}
+
+		return $response;
 	}
 }
 
