@@ -30,7 +30,13 @@ final class Mark_Vane_Polylang_Bridge {
 	 * We deliberately inspect all page meta keys because older releases did
 	 * not expose a stable public meta-key contract.
 	 */
-	public static function discover_pairs() {
+	public static function discover_pairs( $force_refresh = false ) {
+		if ( ! $force_refresh ) {
+			$cached = get_transient( self::PAIR_CACHE_KEY );
+			if ( is_array( $cached ) ) { return $cached; }
+		}
+		$ignored = get_option( self::IGNORED_OPTION, array() );
+		$managed = get_option( self::MANAGED_OPTION, array() );
 		$page_ids = get_posts(
 			array(
 				'post_type'              => 'page',
@@ -78,6 +84,7 @@ final class Mark_Vane_Polylang_Bridge {
 							continue;
 						}
 						$key = $ru_id . ':' . $en_id;
+						if ( isset( $ignored[ $key ] ) ) { continue; }
 						$pairs[ $key ] = array(
 							'ru' => $ru_id,
 							'en' => $en_id,
@@ -87,7 +94,18 @@ final class Mark_Vane_Polylang_Bridge {
 			}
 		}
 
-		return array_values( $pairs );
+		foreach ( (array) $managed as $managed_pair ) {
+			if ( isset( $managed_pair['ru'], $managed_pair['en'] ) ) {
+				$ru_id = absint( $managed_pair['ru'] );
+				$en_id = absint( $managed_pair['en'] );
+				if ( $ru_id && $en_id && $ru_id !== $en_id && get_post_type( $ru_id ) === 'page' && get_post_type( $en_id ) === 'page' ) {
+					$pairs[ $ru_id . ':' . $en_id ] = array( 'ru' => $ru_id, 'en' => $en_id );
+				}
+			}
+		}
+		$result = array_values( $pairs );
+		set_transient( self::PAIR_CACHE_KEY, $result, 300 );
+		return $result;
 	}
 
 	public static function maybe_auto_sync() {
