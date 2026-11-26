@@ -18,7 +18,16 @@ Before publishing a plugin ZIP, perform these checks locally:
 Example package command from the repository root:
 
 ```sh
-zip -r markvane-polylang-bridge-1.4.0.zip markvane-polylang-bridge
+zip -r markvane-polylang-bridge-1.4.1.zip markvane-polylang-bridge
 ```
 
 Update the version in the command when preparing a later release.
+
+## Version 1.4.1 additional checks
+
+1. Add a JSON pair value to a test page's metadata and confirm a single sync event is scheduled.
+2. Add a PHP-serialized array containing `ru` and `en` IDs to a test page's metadata and confirm a single sync event is scheduled.
+3. Add unrelated metadata containing `ru` and `en` numeric IDs to a different page and confirm it is not discovered as a pair when that page is not one of the referenced pages.
+4. Confirm malformed IDs, equal IDs, missing pages, and non-page post IDs are rejected.
+5. Deactivate the plugin and confirm its `mvpb_run_scheduled_sync` event is cleared. Reactivate and confirm normal scheduling resumes.
+6. Confirm the existing production RU/EN pairs, page content, slugs, URLs, publication statuses, and menus remain unchanged.
