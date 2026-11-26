@@ -1,3 +1,8 @@
+## 1.4.1
+- Validate legacy pair metadata before accepting it, including strict numeric page IDs and ownership by one of the referenced pages.
+- Schedule automatic synchronization for both JSON and PHP-serialized legacy pair metadata.
+- Clear the plugin's scheduled synchronization event and pair cache on deactivation.
+
 # Changelog
 
 ## 1.4.0
