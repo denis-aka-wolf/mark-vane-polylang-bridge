@@ -1,3 +1,9 @@
+## 1.4.4
+- Return synchronization counters for checked, already linked, repaired, skipped, and failed pairs.
+- Verify translation relationships in both directions and repair incomplete one-sided associations.
+- Add REST diagnostics for both translation maps and `pll_get_post()` lookups.
+- Log already-correct relationships as verified.
+
 ## 1.4.3
 - Run the throttled synchronization fallback during REST API initialization as well as admin requests, allowing REST-driven site operations to process pending pairs.
 
