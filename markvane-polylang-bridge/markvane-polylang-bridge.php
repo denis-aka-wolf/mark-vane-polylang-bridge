@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Mark Vane Polylang Bridge
  * Description: Safely manages RU/EN translation pairs through Polylang.
- * Version: 1.4.1
+ * Version: 1.4.2
  * Author: Mark Vane
  * License: GPL-2.0-or-later
  * Text Domain: mark-vane-polylang-bridge
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class Mark_Vane_Polylang_Bridge {
-	const VERSION = '1.4.1';
+	const VERSION = '1.4.2';
 	const CRON_HOOK = 'mvpb_run_scheduled_sync';
 	const PAIR_CACHE_KEY = 'mvpb_pairs_cache';
 	const MANAGED_OPTION = 'mvpb_managed_pairs';
@@ -24,7 +24,8 @@ final class Mark_Vane_Polylang_Bridge {
 	const REST_NAMESPACE = 'mark-vane-polylang-bridge/v1';
 
 	public static function boot() {
-		add_action( 'admin_init', array( __CLASS__, 'maybe_schedule_initial_sync' ) );
+		add_action( 'admin_init', array( __CLASS__, 'maybe_schedule_initial_sync' ), 10 );
+		add_action( 'admin_init', array( __CLASS__, 'maybe_auto_sync' ), 20 );
 		add_action( self::CRON_HOOK, array( __CLASS__, 'run_scheduled_sync' ) );
 		add_action( 'added_post_meta', array( __CLASS__, 'watch_pair_metadata' ), 10, 4 );
 		add_action( 'updated_post_meta', array( __CLASS__, 'watch_pair_metadata' ), 10, 4 );
@@ -155,10 +156,18 @@ final class Mark_Vane_Polylang_Bridge {
 	}
 
 	public static function maybe_auto_sync() {
-		$auto_sync = get_option( 'mvpb_auto_sync', 1 );
-		if ( 1 === (int) $auto_sync ) {
-			self::sync_legacy_pairs();
+		if ( 1 !== (int) get_option( 'mvpb_auto_sync', 1 ) ) {
+			return;
 		}
+
+		// WP-Cron may be delayed or disabled on some hosting configurations.
+		// Use a short admin-side fallback without syncing on every request.
+		if ( get_transient( 'mvpb_admin_sync_lock' ) ) {
+			return;
+		}
+
+		set_transient( 'mvpb_admin_sync_lock', 1, 60 );
+		self::sync_legacy_pairs();
 	}
 
 	public static function sync_legacy_pairs() {
@@ -222,6 +231,18 @@ final class Mark_Vane_Polylang_Bridge {
 					'en' => $en_id,
 				)
 			);
+
+			// Verify the relationship from both sides. Polylang's save API does
+			// not return a success value, so read back the persisted translation map.
+			$saved_ru = (array) pll_get_post_translations( $ru_id );
+			$saved_en = (array) pll_get_post_translations( $en_id );
+			if ( isset( $saved_ru['en'], $saved_en['ru'] )
+				&& (int) $saved_ru['en'] === $en_id
+				&& (int) $saved_en['ru'] === $ru_id ) {
+				self::log_activity( 'sync_success', $ru_id, $en_id, 'Связь переводов подтверждена Polylang с обеих сторон.' );
+			} else {
+				self::log_activity( 'sync_failed', $ru_id, $en_id, 'Polylang не подтвердил двустороннюю связь переводов.' );
+			}
 		}
 	}
 
@@ -499,7 +520,7 @@ final class Mark_Vane_Polylang_Bridge {
 				<input type="hidden" name="action" value="mvpb_save_settings">
 				<?php wp_nonce_field( 'mvpb_save_settings' ); ?>
 				<label><input type="checkbox" name="auto_sync" value="1" <?php checked( 1, $auto_sync ); ?>> Автоматически синхронизировать пары при изменении метаданных</label>
-				<p class="description">Синхронизация запускается отложенной задачей WP-Cron, а не при каждом открытии сайта.</p>
+				<p class="description">Синхронизация запускается через WP-Cron. Если WP-Cron задерживается, админка выполняет резервную проверку не чаще одного раза в минуту.</p>
 				<?php submit_button( 'Сохранить настройки', 'secondary', 'submit', false ); ?>
 			</form>
 			<h2>Синхронизация</h2>
