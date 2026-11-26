@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Mark Vane Polylang Bridge
  * Description: Safely manages RU/EN translation pairs through Polylang.
- * Version: 1.4.0
+ * Version: 1.4.1
  * Author: Mark Vane
  * License: GPL-2.0-or-later
  * Text Domain: mark-vane-polylang-bridge
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class Mark_Vane_Polylang_Bridge {
-	const VERSION = '1.4.0';
+	const VERSION = '1.4.1';
 	const CRON_HOOK = 'mvpb_run_scheduled_sync';
 	const PAIR_CACHE_KEY = 'mvpb_pairs_cache';
 	const MANAGED_OPTION = 'mvpb_managed_pairs';
@@ -84,19 +84,12 @@ final class Mark_Vane_Polylang_Bridge {
 					}
 
 					foreach ( $candidates as $candidate ) {
-						if ( ! isset( $candidate['ru'], $candidate['en'] ) ) {
+						$validated_pair = self::validate_legacy_pair_candidate( $candidate, $page_id );
+						if ( ! $validated_pair ) {
 							continue;
 						}
-						$ru_id = absint( $candidate['ru'] );
-						$en_id = absint( $candidate['en'] );
-						if ( ! $ru_id || ! $en_id || $ru_id === $en_id ) {
-							continue;
-						}
-						$ru_post = get_post( $ru_id );
-						$en_post = get_post( $en_id );
-						if ( ! $ru_post || ! $en_post || 'page' !== $ru_post->post_type || 'page' !== $en_post->post_type ) {
-							continue;
-						}
+						$ru_id = $validated_pair['ru'];
+						$en_id = $validated_pair['en'];
 						$key = $ru_id . ':' . $en_id;
 						if ( isset( $ignored[ $key ] ) ) { continue; }
 						$pairs[ $key ] = array(
@@ -120,6 +113,45 @@ final class Mark_Vane_Polylang_Bridge {
 		$result = array_values( $pairs );
 		set_transient( self::PAIR_CACHE_KEY, $result, 300 );
 		return $result;
+	}
+
+	/**
+	 * Validate a legacy pair candidate and ensure the metadata belongs to
+	 * one of the two pages it references. This sharply reduces false positives
+	 * from unrelated metadata that happens to contain "ru" and "en" keys.
+	 *
+	 * @return array|false
+	 */
+	private static function validate_legacy_pair_candidate( $candidate, $owner_page_id ) {
+		if ( ! is_array( $candidate ) || ! isset( $candidate['ru'], $candidate['en'] ) ) {
+			return false;
+		}
+
+		$raw_ru = $candidate['ru'];
+		$raw_en = $candidate['en'];
+		if ( ! is_scalar( $raw_ru ) || ! is_scalar( $raw_en )
+			|| ! preg_match( '/^[1-9][0-9]*$/', (string) $raw_ru )
+			|| ! preg_match( '/^[1-9][0-9]*$/', (string) $raw_en ) ) {
+			return false;
+		}
+
+		$ru_id = (int) $raw_ru;
+		$en_id = (int) $raw_en;
+		$owner_page_id = (int) $owner_page_id;
+		if ( ! $ru_id || ! $en_id || $ru_id === $en_id
+			|| ( $owner_page_id !== $ru_id && $owner_page_id !== $en_id ) ) {
+			return false;
+		}
+
+		$ru_post = get_post( $ru_id );
+		$en_post = get_post( $en_id );
+		if ( ! $ru_post || ! $en_post
+			|| 'page' !== $ru_post->post_type
+			|| 'page' !== $en_post->post_type ) {
+			return false;
+		}
+
+		return array( 'ru' => $ru_id, 'en' => $en_id );
 	}
 
 	public static function maybe_auto_sync() {
@@ -200,6 +232,11 @@ final class Mark_Vane_Polylang_Bridge {
 		}
 	}
 
+	public static function deactivate() {
+		wp_clear_scheduled_hook( self::CRON_HOOK );
+		delete_transient( self::PAIR_CACHE_KEY );
+	}
+
 	public static function maybe_schedule_initial_sync() {
 		if ( get_option( 'mvpb_initial_sync_version' ) === self::VERSION ) { return; }
 		if ( 1 === (int) get_option( 'mvpb_auto_sync', 1 ) && ! wp_next_scheduled( self::CRON_HOOK ) ) {
@@ -215,9 +252,27 @@ final class Mark_Vane_Polylang_Bridge {
 	public static function watch_pair_metadata( $meta_id, $post_id, $meta_key, $meta_value ) {
 		self::invalidate_pair_cache();
 		if ( 1 !== (int) get_option( 'mvpb_auto_sync', 1 ) ) { return; }
-		$pair = is_string( $meta_value ) ? json_decode( $meta_value, true ) : $meta_value;
-		if ( is_array( $pair ) && ! empty( $pair['ru'] ) && ! empty( $pair['en'] ) && ! wp_next_scheduled( self::CRON_HOOK ) ) {
-			wp_schedule_single_event( time() + 15, self::CRON_HOOK );
+		$candidates = array();
+		if ( is_string( $meta_value ) ) {
+			$decoded = json_decode( $meta_value, true );
+			if ( is_array( $decoded ) ) {
+				$candidates[] = $decoded;
+			}
+			$unserialized = maybe_unserialize( $meta_value );
+			if ( is_array( $unserialized ) ) {
+				$candidates[] = $unserialized;
+			}
+		} elseif ( is_array( $meta_value ) ) {
+			$candidates[] = $meta_value;
+		}
+
+		foreach ( $candidates as $candidate ) {
+			if ( self::validate_legacy_pair_candidate( $candidate, $post_id ) ) {
+				if ( ! wp_next_scheduled( self::CRON_HOOK ) ) {
+					wp_schedule_single_event( time() + 15, self::CRON_HOOK );
+				}
+				break;
+			}
 		}
 	}
 
@@ -544,3 +599,4 @@ final class Mark_Vane_Polylang_Bridge {
 
 Mark_Vane_Polylang_Bridge::boot();
 register_activation_hook( __FILE__, array( 'Mark_Vane_Polylang_Bridge', 'activate' ) );
+register_deactivation_hook( __FILE__, array( 'Mark_Vane_Polylang_Bridge', 'deactivate' ) );
