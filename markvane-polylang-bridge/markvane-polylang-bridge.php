@@ -142,6 +142,21 @@ final class Mark_Vane_Polylang_Bridge {
 		foreach ( self::discover_pairs() as $pair ) {
 			$ru_id = $pair['ru'];
 			$en_id = $pair['en'];
+			$ru_translations = pll_get_post_translations( $ru_id );
+			$en_translations = pll_get_post_translations( $en_id );
+			$group_conflict = false;
+			foreach ( array( (array) $ru_translations, (array) $en_translations ) as $translation_map ) {
+				foreach ( $translation_map as $translation_id ) {
+					if ( (int) $translation_id !== $ru_id && (int) $translation_id !== $en_id ) {
+						$group_conflict = true;
+						break 2;
+					}
+				}
+			}
+			if ( $group_conflict ) {
+				self::log_activity( 'sync_conflict', $ru_id, $en_id, 'Страница уже состоит в другой группе переводов.' );
+				continue;
+			}
 			$ru_lang = pll_get_post_language( $ru_id, 'slug' );
 			$en_lang = pll_get_post_language( $en_id, 'slug' );
 
@@ -162,21 +177,6 @@ final class Mark_Vane_Polylang_Bridge {
 			}
 
 
-			$ru_translations = pll_get_post_translations( $ru_id );
-			$en_translations = pll_get_post_translations( $en_id );
-			$group_conflict = false;
-			foreach ( array( (array) $ru_translations, (array) $en_translations ) as $translation_map ) {
-				foreach ( $translation_map as $translation_id ) {
-					if ( (int) $translation_id !== $ru_id && (int) $translation_id !== $en_id ) {
-						$group_conflict = true;
-						break 2;
-					}
-				}
-			}
-			if ( $group_conflict ) {
-				self::log_activity( 'sync_conflict', $ru_id, $en_id, 'Страница уже состоит в другой группе переводов.' );
-				continue;
-			}
 
 			$current = pll_get_post_translations( $ru_id );
 			if ( is_array( $current ) && isset( $current['ru'], $current['en'] )
