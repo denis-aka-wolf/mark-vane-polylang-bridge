@@ -151,7 +151,7 @@ final class Mark_Vane_Polylang_Bridge {
 			return;
 		}
 		$pairs = self::discover_pairs();
-		$polylang_ready = function_exists( 'pll_save_post_translations' ) && function_exists( 'pll_get_post_language' );
+		$polylang_ready = function_exists( 'pll_save_post_translations' ) && function_exists( 'pll_get_post_language' ) && function_exists( 'pll_get_post_translations' );
 		?>
 		<div class="wrap">
 			<h1>Mark Vane Polylang Bridge</h1>
