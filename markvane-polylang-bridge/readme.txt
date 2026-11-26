@@ -3,7 +3,7 @@ Contributors: markvane
 Tags: polylang, multilingual, translations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 1.4.2
+Stable tag: 1.4.3
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
 
@@ -51,6 +51,9 @@ Both endpoints require the manage_options capability.
 * PHP 7.4+
 
 == Changelog ==
+
+= 1.4.3 =
+* Run the throttled synchronization fallback during authenticated and public REST API initialization as well as admin requests, so API-driven site operations can also process pending pairs.
 
 = 1.4.2 =
 * Add a throttled admin-side fallback when WP-Cron is delayed or unavailable.
