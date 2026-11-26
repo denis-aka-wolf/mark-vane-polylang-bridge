@@ -1,6 +1,6 @@
 # Manual test plan
 
-Run these checks on a staging copy before deploying to a production site.
+Run these checks on a staging copy before deploying to a production site. The current markvane.tech site has no staging environment available; do not run create, edit, unlink, or other destructive pair-management tests against production pages.
 
 ## Compatibility and baseline
 1. Confirm WordPress, PHP, and Polylang are active.
@@ -32,7 +32,7 @@ Run these checks on a staging copy before deploying to a production site.
 3. Confirm all admin POST actions reject missing or invalid nonces.
 
 ## Release checks
-1. Run php -l markvane-polylang-bridge.php.
-2. Confirm the ZIP contains one top-level markvane-polylang-bridge/ directory.
+1. Run `php -l markvane-polylang-bridge/markvane-polylang-bridge.php` from the repository root.
+2. Confirm `dist/markvane-polylang-bridge-1.4.1.zip` contains one top-level `markvane-polylang-bridge/` directory.
 3. Confirm that directory contains the PHP file, readme.txt, CHANGELOG.md, and LICENSE.
-4. Install the ZIP on staging and verify the active plugin version is 1.4.0.
+4. Install the ZIP on staging and verify the active plugin version is 1.4.1. If staging is unavailable, verify only the installed version and read-only diagnostics on production; defer destructive tests.
