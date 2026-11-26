@@ -1,24 +1,52 @@
 # Mark Vane Polylang Bridge
 
-A compatibility plugin for the `markvane.tech` WordPress site. It discovers existing Russian/English page pairs from legacy translation metadata and registers those pairs with Polylang's native translation API.
+A WordPress compatibility and administration plugin for safely managing Russian/English page translations through Polylang's native API.
 
-## Safety
+## Features
 
-- Keeps the existing plugin directory and main-file slug: `markvane-polylang-bridge/markvane-polylang-bridge.php`.
-- Does not delete or rewrite legacy post metadata.
-- Does not change page content, slugs, permalinks, publication status, or menus.
-- Assigns `ru` or `en` only when a paired page has no language. Existing language assignments are not silently overwritten.
-- Does nothing when the Polylang API is unavailable.
+- Discovers existing RU/EN pairs stored in legacy JSON or serialized page metadata.
+- Creates and manages translation pairs from the WordPress admin dashboard.
+- Edits or unlinks pairs without deleting pages.
+- Detects language conflicts and existing translation-group conflicts instead of silently overwriting them.
+- Preserves legacy metadata. Manually unlinked legacy pairs are excluded from future automatic synchronization until explicitly restored.
+- Provides manual and event-driven automatic synchronization.
+- Shows per-pair diagnostics and a recent activity log.
+- Exposes administrator-only REST endpoints for listing and synchronizing pairs.
 
-Open **Tools → Polylang Bridge** to inspect discovered pairs and manually synchronize them.
+## Safety guarantees
+
+- Does not change page content, titles, slugs, permalinks, publication status, or menus.
+- Does not delete WordPress pages.
+- Assigns ru or en only when a page has no language assigned.
+- Does not merge pages that already belong to another translation group.
+- Refuses to unlink groups containing additional translations, preventing accidental damage to third-language associations.
+- Keeps original legacy metadata intact.
+
+## Performance
+
+The plugin no longer scans page metadata on every front-end request. Pair discovery is cached for five minutes and the cache is invalidated when page metadata changes. Automatic synchronization is scheduled through WP-Cron only after relevant metadata changes or a one-time upgrade/activation event.
+
+## Administration
+
+Open **Polylang Bridge** from the top-level WordPress admin sidebar.
+
+To create a pair, choose an existing Russian page and an existing English page. To change a pair, use **Изменить** in the pair table. To unlink it, use **Отвязать** and confirm the action. Unlinking removes only the Polylang association; pages and legacy metadata remain untouched.
+
+If a pair is manually unlinked but still exists in legacy metadata, the plugin stores an ignore marker so automatic synchronization will not recreate the association. To restore it, create/save the same pair from the dashboard.
 
 ## REST API
 
-- `GET /wp-json/mark-vane-polylang-bridge/v1/pairs` lists discovered pairs.
-- `POST /wp-json/mark-vane-polylang-bridge/v1/sync` synchronizes pairs and requires an administrator.
+- GET /wp-json/mark-vane-polylang-bridge/v1/pairs lists pairs and diagnostic status.
+- POST /wp-json/mark-vane-polylang-bridge/v1/sync runs synchronization.
+
+Both endpoints require an authenticated administrator with manage_options.
 
 ## Requirements
 
 - WordPress 6.0+
-- Polylang 3.x
 - PHP 7.4+
+- Polylang with language slugs ru and en
+
+## License
+
+GNU General Public License v2.0 or later. See LICENSE.
