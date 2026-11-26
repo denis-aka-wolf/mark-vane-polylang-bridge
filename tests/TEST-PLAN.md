@@ -20,6 +20,8 @@ Run these checks on a staging copy before deploying to a production site. The cu
 
 ## Synchronization and performance
 1. Run manual synchronization and review the activity log.
+2. With automatic synchronization enabled and WP-Cron unavailable or delayed, open the admin area and confirm the fallback runs no more than once per minute.
+3. Confirm a successful save is visible in both `pll_get_post_translations( RU_ID )` and `pll_get_post_translations( EN_ID )`, and that the activity log records the outcome.
 2. Change legacy pair metadata. Confirm a WP-Cron event is scheduled and processed.
 3. Disable automatic synchronization, change metadata, and confirm no automatic task is scheduled.
 4. Re-enable it and confirm a task is scheduled.
@@ -33,6 +35,6 @@ Run these checks on a staging copy before deploying to a production site. The cu
 
 ## Release checks
 1. Run `php -l markvane-polylang-bridge/markvane-polylang-bridge.php` from the repository root.
-2. Confirm `dist/markvane-polylang-bridge-1.4.1.zip` contains one top-level `markvane-polylang-bridge/` directory.
+2. Confirm `dist/markvane-polylang-bridge-1.4.2.zip` contains one top-level `markvane-polylang-bridge/` directory.
 3. Confirm that directory contains the PHP file, readme.txt, CHANGELOG.md, and LICENSE.
-4. Install the ZIP on staging and verify the active plugin version is 1.4.1. If staging is unavailable, verify only the installed version and read-only diagnostics on production; defer destructive tests.
+4. Install the ZIP on staging and verify the active plugin version is 1.4.2. If staging is unavailable, verify only the installed version and read-only diagnostics on production; defer destructive tests.
