@@ -23,6 +23,14 @@ zip -r markvane-polylang-bridge-1.4.2.zip markvane-polylang-bridge
 
 Update the version in the command when preparing a later release.
 
+## Version 1.4.5 additional checks
+
+1. Confirm REST sync returns `success: true` only when no pair was skipped or failed.
+2. Confirm unavailable Polylang or missing `ru`/`en` languages returns HTTP 503.
+3. Confirm skipped or failed pairs return HTTP 409 with synchronization counters.
+4. Confirm unexpected exceptions return HTTP 500 and are recorded in the activity log.
+5. Confirm REST synchronization summaries are recorded in the activity log.
+
 ## Version 1.4.2 additional checks
 
 1. Confirm the admin fallback is registered after the initial scheduling hook and is throttled to one run per 60 seconds.
