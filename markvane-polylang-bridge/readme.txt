@@ -3,32 +3,68 @@ Contributors: markvane
 Tags: polylang, multilingual, translations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 1.3.0
-License: GPLv2 or later
+Stable tag: 1.4.0
+License: GPL-2.0-or-later
+License URI: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
 
-Preserves legacy Russian/English page-pair metadata and registers those pairs using Polylang's native translation API.
+Safely manages legacy Russian/English page pairs through Polylang's native translation API.
 
 == Description ==
 
-The plugin discovers existing page pairs from legacy metadata containing a JSON object with numeric "ru" and "en" page IDs. It does not require a hard-coded metadata key.
+The plugin discovers existing RU/EN page pairs from legacy page metadata containing JSON or serialized arrays with numeric "ru" and "en" page IDs. It also supports pairs created in the plugin dashboard.
 
-When Polylang is active and languages with slugs ru and en exist, the plugin:
-* assigns a language only when a paired page currently has no language;
-* links correctly assigned pairs with pll_save_post_translations();
-* leaves conflicting language assignments untouched;
-* keeps the legacy metadata intact.
-
-It does not change page content, slugs, URLs, statuses, or menus.
+Safety rules:
+* Existing language assignments are never silently overwritten.
+* Pages already belonging to another translation group are not merged automatically.
+* Original legacy metadata is preserved.
+* Unlinking removes the Polylang association, not the pages or their content.
+* Unlinked legacy pairs are recorded as ignored so automatic synchronization does not immediately recreate the association.
+* Page content, titles, slugs, URLs, publication status, and menus are not changed.
 
 == Administration ==
 
-Use the Polylang Bridge menu in the WordPress admin sidebar to inspect detected page pairs, check Polylang API status, enable or disable automatic synchronization, and run a manual synchronization.
+Open the top-level **Polylang Bridge** menu in the WordPress admin sidebar.
+
+The dashboard provides:
+* RU/EN pair inventory and status diagnostics.
+* Create, edit, and unlink actions for existing WordPress pages.
+* Language and translation-group conflict protection.
+* Automatic synchronization setting and manual synchronization.
+* A recent activity log.
+
+Automatic synchronization is event-driven. The plugin does not scan every page on ordinary front-end requests. When legacy pair metadata changes, a single WP-Cron task is scheduled. The pair inventory is cached for five minutes and invalidated when page metadata changes.
+
+Unlinking a pair preserves its original metadata and records an ignore entry. To restore the pair, create/save that pair again from the dashboard.
 
 == REST API ==
 
-Authenticated administrators can use GET /wp-json/mark-vane-polylang-bridge/v1/pairs and POST /wp-json/mark-vane-polylang-bridge/v1/sync.
+Authenticated administrators can use:
+* GET /wp-json/mark-vane-polylang-bridge/v1/pairs
+* POST /wp-json/mark-vane-polylang-bridge/v1/sync
+
+Both endpoints require the manage_options capability.
+
+== Requirements ==
+
+* WordPress 6.0+
+* Polylang with languages whose slugs are ru and en
+* PHP 7.4+
 
 == Changelog ==
+
+= 1.4.0 =
+* Add dashboard management for creating, editing, and unlinking RU/EN page pairs.
+* Add conflict checks for language assignments and existing translation groups.
+* Preserve legacy metadata and prevent manually unlinked pairs from being auto-linked again.
+* Move automatic synchronization to a scheduled event triggered by metadata changes.
+* Cache the discovered pair inventory and invalidate it when page metadata changes.
+* Add an activity log and per-pair diagnostic statuses.
+* Update documentation and include the GPL license in the plugin package.
+
+= 1.3.0 =
+* Add a dedicated WordPress admin menu and dashboard.
+* Add an option to enable or disable automatic synchronization.
+* Keep manual synchronization available from the dashboard.
 
 = 1.2.0 =
 * Register legacy RU/EN pairs with the native Polylang API.
@@ -36,4 +72,4 @@ Authenticated administrators can use GET /wp-json/mark-vane-polylang-bridge/v1/p
 * Preserve legacy metadata and avoid overwriting existing language assignments.
 
 = 1.1.0 =
-* Legacy metadata-based RU/EN page pairing.
+* Add legacy metadata-based RU/EN page pairing.
