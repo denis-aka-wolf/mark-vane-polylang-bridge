@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Mark Vane Polylang Bridge
  * Description: Safely manages RU/EN translation pairs through Polylang.
- * Version: 1.4.2
+ * Version: 1.4.3
  * Author: Mark Vane
  * License: GPL-2.0-or-later
  * Text Domain: mark-vane-polylang-bridge
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class Mark_Vane_Polylang_Bridge {
-	const VERSION = '1.4.2';
+	const VERSION = '1.4.3';
 	const CRON_HOOK = 'mvpb_run_scheduled_sync';
 	const PAIR_CACHE_KEY = 'mvpb_pairs_cache';
 	const MANAGED_OPTION = 'mvpb_managed_pairs';
@@ -37,6 +37,7 @@ final class Mark_Vane_Polylang_Bridge {
 		add_action( 'admin_post_mvpb_save_pair', array( __CLASS__, 'handle_save_pair' ) );
 		add_action( 'admin_post_mvpb_unlink_pair', array( __CLASS__, 'handle_unlink_pair' ) );
 		add_action( 'rest_api_init', array( __CLASS__, 'register_rest_routes' ) );
+		add_action( 'rest_api_init', array( __CLASS__, 'maybe_auto_sync' ), 20 );
 	}
 
 	/**
