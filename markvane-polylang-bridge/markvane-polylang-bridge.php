@@ -90,7 +90,7 @@ final class Mark_Vane_Polylang_Bridge {
 	}
 
 	public static function sync_legacy_pairs() {
-		if ( ! function_exists( 'pll_save_post_translations' ) || ! function_exists( 'pll_get_post_language' ) || ! function_exists( 'pll_set_post_language' ) ) {
+		if ( ! function_exists( 'pll_save_post_translations' ) || ! function_exists( 'pll_get_post_language' ) || ! function_exists( 'pll_set_post_language' ) || ! function_exists( 'pll_get_post_translations' ) ) {
 			return;
 		}
 
