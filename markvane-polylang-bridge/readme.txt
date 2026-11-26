@@ -3,7 +3,7 @@ Contributors: markvane
 Tags: polylang, multilingual, translations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 
 Preserves legacy Russian/English page-pair metadata and registers those pairs using Polylang's native translation API.
@@ -22,7 +22,7 @@ It does not change page content, slugs, URLs, statuses, or menus.
 
 == Administration ==
 
-Open Tools > Polylang Bridge to inspect detected pairs and run a manual synchronization.
+Use the Polylang Bridge menu in the WordPress admin sidebar to inspect detected page pairs, check Polylang API status, enable or disable automatic synchronization, and run a manual synchronization.
 
 == REST API ==
 
