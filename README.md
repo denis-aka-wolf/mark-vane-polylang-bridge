@@ -4,12 +4,13 @@ A WordPress compatibility and administration plugin for safely managing Russian/
 
 ## Features
 
-- Discovers existing RU/EN pairs stored in legacy JSON or serialized page metadata.
+- Discovers validated RU/EN pairs stored in legacy JSON or PHP-serialized page metadata attached to one of the referenced pages.
 - Creates and manages translation pairs from the WordPress admin dashboard.
 - Edits or unlinks pairs without deleting pages.
 - Detects language conflicts and existing translation-group conflicts instead of silently overwriting them.
 - Preserves legacy metadata. Manually unlinked legacy pairs are excluded from future automatic synchronization until explicitly restored.
-- Provides manual and event-driven automatic synchronization.
+- Provides manual and event-driven automatic synchronization for both JSON and PHP-serialized legacy metadata.
+- Clears its scheduled synchronization event and pair cache when deactivated.
 - Shows per-pair diagnostics and a recent activity log.
 - Exposes administrator-only REST endpoints for listing and synchronizing pairs.
 
