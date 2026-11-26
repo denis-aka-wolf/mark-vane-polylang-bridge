@@ -1,0 +1,35 @@
+name: Validate and package plugin
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+      - name: PHP syntax check
+        run: php -l markvane-polylang-bridge/markvane-polylang-bridge.php
+      - name: Verify plugin package files
+        run: |
+          test -f markvane-polylang-bridge/LICENSE
+          test -f markvane-polylang-bridge/readme.txt
+          test -f markvane-polylang-bridge/CHANGELOG.md
+      - name: Build installable ZIP
+        run: |
+          mkdir -p dist
+          zip -r dist/markvane-polylang-bridge-1.4.0.zip markvane-polylang-bridge
+      - name: Upload plugin ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: markvane-polylang-bridge-1.4.0
+          path: dist/markvane-polylang-bridge-1.4.0.zip
+          if-no-files-found: error
