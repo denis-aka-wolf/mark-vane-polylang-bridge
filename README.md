@@ -42,6 +42,10 @@ If a pair is manually unlinked but still exists in legacy metadata, the plugin s
 
 Both endpoints require an authenticated administrator with manage_options.
 
+## REST synchronization behavior
+
+The REST sync endpoint reports the actual synchronization counters. It returns success only when all discovered pairs are either already linked or successfully repaired. Unavailable Polylang returns HTTP 503; skipped or failed pairs return HTTP 409 with diagnostic counters. Unexpected exceptions are caught and returned as a controlled HTTP 500 error.
+
 ## Requirements
 
 - WordPress 6.0+
