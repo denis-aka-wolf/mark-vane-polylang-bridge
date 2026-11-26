@@ -3,7 +3,7 @@ Contributors: markvane
 Tags: polylang, multilingual, translations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 1.4.3
+Stable tag: 1.4.4
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
 
@@ -26,13 +26,13 @@ Safety rules:
 Open the top-level **Polylang Bridge** menu in the WordPress admin sidebar.
 
 The dashboard provides:
-* RU/EN pair inventory and status diagnostics.
+* RU/EN pair inventory and status diagnostics, including reciprocal translation maps from both page records.
 * Create, edit, and unlink actions for existing WordPress pages.
 * Language and translation-group conflict protection.
 * Automatic synchronization setting and manual synchronization.
 * A recent activity log.
 
-Automatic synchronization is event-driven. The plugin does not scan pages on ordinary front-end requests. When legacy pair metadata changes, a single WP-Cron task is scheduled. As a fallback for hosting environments where WP-Cron is delayed or disabled, the admin area checks for pending synchronization no more than once per minute. The pair inventory is cached for five minutes and invalidated when page metadata changes. Every newly saved translation pair is verified from both the Russian and English page records and the result is written to the activity log.
+Automatic synchronization is event-driven. The plugin does not scan pages on ordinary front-end requests. When legacy pair metadata changes, a single WP-Cron task is scheduled. As a fallback for hosting environments where WP-Cron is delayed or disabled, the admin area checks for pending synchronization no more than once per minute. The pair inventory is cached for five minutes and invalidated when page metadata changes. Every translation pair is checked in both directions. Manual synchronization reports the number of pairs checked, already linked, repaired, skipped, and failed. The REST inventory also exposes both translation maps and the `pll_get_post()` lookup result for each language.
 
 Unlinking a pair preserves its original metadata and records an ignore entry. To restore the pair, create/save that pair again from the dashboard.
 
@@ -51,6 +51,13 @@ Both endpoints require the manage_options capability.
 * PHP 7.4+
 
 == Changelog ==
+
+= 1.4.4 =
+* Report real synchronization totals instead of a generic started message.
+* Verify reciprocal translation maps and repair incomplete one-sided relationships.
+* Add REST diagnostics for both translation maps and Polylang language lookups.
+* Record already-correct pairs in the activity log.
+
 
 = 1.4.3 =
 * Run the throttled synchronization fallback during authenticated and public REST API initialization as well as admin requests, so API-driven site operations can also process pending pairs.
