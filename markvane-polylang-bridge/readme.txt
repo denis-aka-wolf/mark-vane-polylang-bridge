@@ -3,7 +3,7 @@ Contributors: markvane
 Tags: polylang, multilingual, translations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 1.4.1
+Stable tag: 1.4.2
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
 
@@ -32,7 +32,7 @@ The dashboard provides:
 * Automatic synchronization setting and manual synchronization.
 * A recent activity log.
 
-Automatic synchronization is event-driven. The plugin does not scan every page on ordinary front-end requests. When legacy pair metadata changes, a single WP-Cron task is scheduled. The pair inventory is cached for five minutes and invalidated when page metadata changes.
+Automatic synchronization is event-driven. The plugin does not scan pages on ordinary front-end requests. When legacy pair metadata changes, a single WP-Cron task is scheduled. As a fallback for hosting environments where WP-Cron is delayed or disabled, the admin area checks for pending synchronization no more than once per minute. The pair inventory is cached for five minutes and invalidated when page metadata changes. Every newly saved translation pair is verified from both the Russian and English page records and the result is written to the activity log.
 
 Unlinking a pair preserves its original metadata and records an ignore entry. To restore the pair, create/save that pair again from the dashboard.
 
@@ -51,6 +51,11 @@ Both endpoints require the manage_options capability.
 * PHP 7.4+
 
 == Changelog ==
+
+= 1.4.2 =
+* Add a throttled admin-side fallback when WP-Cron is delayed or unavailable.
+* Verify saved Polylang translation relationships from both language sides.
+* Record successful and failed synchronization results in the activity log.
 
 = 1.4.1 =
 * Validate legacy pair candidates to reduce false positives from unrelated metadata.
