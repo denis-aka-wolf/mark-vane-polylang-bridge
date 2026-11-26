@@ -328,6 +328,8 @@ final class Mark_Vane_Polylang_Bridge {
 			<h1>Mark Vane Polylang Bridge</h1>
 			<?php if ( isset( $_GET['mvpb_saved'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Настройки сохранены.</p></div><?php endif; ?>
 			<?php if ( isset( $_GET['mvpb_synced'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Синхронизация завершена.</p></div><?php endif; ?>
+			<?php if ( isset( $_GET['mvpb_saved_pair'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Пара переводов создана.</p></div><?php endif; ?>
+			<?php if ( isset( $_GET['mvpb_unlinked'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Связь удалена. Страницы и метаданные сохранены.</p></div><?php endif; ?>
 			<p>Плагин обнаруживает существующие пары страниц из старых метаданных и связывает их через штатный API Polylang. Содержимое страниц, URL, меню и исходные метаданные не изменяются.</p>
 			<div style="display:flex;gap:12px;flex-wrap:wrap;margin:18px 0">
 				<div class="card" style="max-width:240px;margin:0;padding:14px 18px"><h2 style="margin:0 0 6px">Polylang API</h2><strong><?php echo $polylang_ready ? '<span style="color:#16803c">Доступен</span>' : '<span style="color:#b32d2e">Недоступен</span>'; ?></strong></div>
@@ -337,7 +339,7 @@ final class Mark_Vane_Polylang_Bridge {
 			<?php if ( $missing_languages ) : ?><div class="notice notice-warning"><p>В Polylang должны быть настроены языки с кодами <code>ru</code> и <code>en</code>.</p></div><?php endif; ?>
 			
 			<table class="widefat striped">
-				<thead><tr><th>RU ID</th><th>Русская страница</th><th>Язык</th><th>EN ID</th><th>English page</th><th>Язык</th><th>Связь Polylang</th></tr></thead>
+				<thead><tr><th>RU ID</th><th>Русская страница</th><th>Язык</th><th>EN ID</th><th>English page</th><th>Язык</th><th>Связь Polylang</th><th>Действия</th></tr></thead>
 				<tbody>
 				<?php foreach ( $pairs as $pair ) :
 					$ru = get_post( $pair['ru'] );
@@ -355,11 +357,20 @@ final class Mark_Vane_Polylang_Bridge {
 						<td><?php echo esc_html( $en ? $en->post_title : '' ); ?></td>
 						<td><?php echo esc_html( $en_lang ? $en_lang : 'не назначен' ); ?></td>
 						<td><?php echo $linked ? 'связаны' : 'не связаны / конфликт языков'; ?></td>
+						<td><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" onsubmit="return confirm('Отвязать страницы? Сами страницы и исходные метаданные останутся.');"><input type="hidden" name="action" value="mvpb_unlink_pair"><input type="hidden" name="ru_id" value="<?php echo esc_attr( $pair['ru'] ); ?>"><input type="hidden" name="en_id" value="<?php echo esc_attr( $pair['en'] ); ?>"><?php wp_nonce_field( 'mvpb_unlink_pair_' . $pair['ru'] . '_' . $pair['en'] ); ?><button type="submit" class="button button-small">Отвязать</button></form></td>
 					</tr>
 				<?php endforeach; ?>
-				<?php if ( empty( $pairs ) ) : ?><tr><td colspan="7">Пары в метаданных не найдены.</td></tr><?php endif; ?>
+				<?php if ( empty( $pairs ) ) : ?><tr><td colspan="8">Пары в метаданных не найдены.</td></tr><?php endif; ?>
 				</tbody>
 			</table>
+			<h2 style="margin-top:28px">Добавить пару переводов</h2>
+			<p>Выберите две существующие страницы. Языки назначаются только если они ещё не заданы. Конфликтующие языки и существующие группы переводов не перезаписываются.</p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="mvpb_save_pair"><?php wp_nonce_field( 'mvpb_save_pair' ); ?>
+				<table class="form-table"><tr><th>Русская страница</th><td><?php wp_dropdown_pages( array( 'name' => 'ru_id', 'show_option_none' => 'Выберите страницу RU', 'post_status' => array( 'publish', 'private', 'draft', 'pending', 'future' ) ) ); ?></td></tr>
+				<tr><th>English page</th><td><?php wp_dropdown_pages( array( 'name' => 'en_id', 'show_option_none' => 'Select English page', 'post_status' => array( 'publish', 'private', 'draft', 'pending', 'future' ) ) ); ?></td></tr></table>
+				<?php submit_button( 'Создать связь' ); ?>
+			</form>
 			<h2 style="margin-top:28px">Настройки</h2>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin:12px 0 22px">
 				<input type="hidden" name="action" value="mvpb_save_settings">
@@ -378,6 +389,13 @@ final class Mark_Vane_Polylang_Bridge {
 			<?php else : ?>
 				<p>Для синхронизации необходимо активировать Polylang и настроить языки с кодами <code>ru</code> и <code>en</code>.</p>
 			<?php endif; ?>
+			<h2 style="margin-top:28px">Журнал операций</h2>
+			<table class="widefat striped"><thead><tr><th>Время</th><th>Операция</th><th>Пара</th><th>Результат</th></tr></thead><tbody>
+			<?php $mvpb_log = get_option( self::LOG_OPTION, array() ); foreach ( array_slice( is_array( $mvpb_log ) ? $mvpb_log : array(), 0, 30 ) as $entry ) : ?>
+				<tr><td><?php echo esc_html( isset( $entry['time'] ) ? $entry['time'] : '' ); ?></td><td><?php echo esc_html( isset( $entry['action'] ) ? $entry['action'] : '' ); ?></td><td><?php echo esc_html( ( isset( $entry['ru'] ) ? $entry['ru'] : 0 ) . ' / ' . ( isset( $entry['en'] ) ? $entry['en'] : 0 ) ); ?></td><td><?php echo esc_html( isset( $entry['message'] ) ? $entry['message'] : '' ); ?></td></tr>
+			<?php endforeach; ?>
+			<?php if ( empty( $mvpb_log ) ) : ?><tr><td colspan="4">Операций пока нет.</td></tr><?php endif; ?>
+			</tbody></table>
 		</div>
 		<?php
 	}
@@ -387,7 +405,14 @@ final class Mark_Vane_Polylang_Bridge {
 			wp_die( esc_html__( 'Недостаточно прав.', 'mark-vane-polylang-bridge' ), 403 );
 		}
 		check_admin_referer( 'mvpb_save_settings' );
-		update_option( 'mvpb_auto_sync', isset( $_POST['auto_sync'] ) ? 1 : 0, false );
+		$enabled = isset( $_POST['auto_sync'] ) ? 1 : 0;
+		update_option( 'mvpb_auto_sync', $enabled, false );
+		if ( $enabled && ! wp_next_scheduled( self::CRON_HOOK ) ) {
+			wp_schedule_single_event( time() + 10, self::CRON_HOOK );
+		}
+		if ( ! $enabled && wp_next_scheduled( self::CRON_HOOK ) ) {
+			wp_clear_scheduled_hook( self::CRON_HOOK );
+		}
 		wp_safe_redirect( add_query_arg( 'mvpb_saved', '1', admin_url( 'admin.php?page=mark-vane-polylang-bridge' ) ) );
 		exit;
 	}
@@ -449,3 +474,4 @@ final class Mark_Vane_Polylang_Bridge {
 }
 
 Mark_Vane_Polylang_Bridge::boot();
+register_activation_hook( __FILE__, array( 'Mark_Vane_Polylang_Bridge', 'activate' ) );
