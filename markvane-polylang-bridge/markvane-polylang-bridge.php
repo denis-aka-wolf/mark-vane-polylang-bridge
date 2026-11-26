@@ -507,8 +507,14 @@ final class Mark_Vane_Polylang_Bridge {
 					$en = get_post( $pair['en'] );
 					$ru_lang = $polylang_ready ? pll_get_post_language( $pair['ru'], 'slug' ) : '';
 					$en_lang = $polylang_ready ? pll_get_post_language( $pair['en'], 'slug' ) : '';
-					$translations = $polylang_ready ? pll_get_post_translations( $pair['ru'] ) : array();
-					$linked = is_array( $translations ) && isset( $translations['en'] ) && (int) $translations['en'] === (int) $pair['en'];
+					$translations = $polylang_ready ? (array) pll_get_post_translations( $pair['ru'] ) : array();
+					$reverse_translations = $polylang_ready ? (array) pll_get_post_translations( $pair['en'] ) : array();
+					$ru_to_en_lookup = $polylang_ready && function_exists( 'pll_get_post' ) ? (int) pll_get_post( $pair['ru'], 'en' ) : 0;
+					$en_to_ru_lookup = $polylang_ready && function_exists( 'pll_get_post' ) ? (int) pll_get_post( $pair['en'], 'ru' ) : 0;
+					$linked_from_ru = isset( $translations['en'] ) && (int) $translations['en'] === (int) $pair['en'];
+					$linked_from_en = isset( $reverse_translations['ru'] ) && (int) $reverse_translations['ru'] === (int) $pair['ru'];
+					$linked = $linked_from_ru && $linked_from_en;
+					$lookup_matches = ! function_exists( 'pll_get_post' ) || ( $ru_to_en_lookup === (int) $pair['en'] && $en_to_ru_lookup === (int) $pair['ru'] );
 					$edit_url = add_query_arg( array( 'page' => 'mark-vane-polylang-bridge', 'mvpb_edit_ru' => $pair['ru'], 'mvpb_edit_en' => $pair['en'] ), admin_url( 'admin.php' ) );
 					?>
 					<tr>
@@ -518,7 +524,12 @@ final class Mark_Vane_Polylang_Bridge {
 						<td><?php echo esc_html( $pair['en'] ); ?></td>
 						<td><?php echo esc_html( $en ? $en->post_title : '' ); ?></td>
 						<td><?php echo esc_html( $en_lang ? $en_lang : 'не назначен' ); ?></td>
-						<td><?php echo $linked ? 'связаны' : 'не связаны / конфликт языков'; ?></td>
+						<td>
+							<strong><?php echo $linked ? 'связаны с обеих сторон' : ( $linked_from_ru || $linked_from_en ? 'неполная связь' : 'не связаны / конфликт языков' ); ?></strong>
+							<br><small><?php echo esc_html( 'RU map → EN: ' . ( isset( $translations['en'] ) ? (int) $translations['en'] : 'нет' ) . '; EN map → RU: ' . ( isset( $reverse_translations['ru'] ) ? (int) $reverse_translations['ru'] : 'нет' ) ); ?></small>
+							<?php if ( function_exists( 'pll_get_post' ) ) : ?><br><small><?php echo esc_html( 'pll_get_post RU→EN: ' . ( $ru_to_en_lookup ? $ru_to_en_lookup : 'нет' ) . '; EN→RU: ' . ( $en_to_ru_lookup ? $en_to_ru_lookup : 'нет' ) ); ?></small><?php endif; ?>
+							<?php if ( $linked && ! $lookup_matches ) : ?><br><small style="color:#b32d2e">Несовпадение результата pll_get_post()</small><?php endif; ?>
+						</td>
 						<td><a class="button button-small" href="<?php echo esc_url( $edit_url ); ?>">Изменить</a>
 						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline-block" onsubmit="return confirm('Отвязать страницы? Сами страницы и исходные метаданные останутся.');"><input type="hidden" name="action" value="mvpb_unlink_pair"><input type="hidden" name="ru_id" value="<?php echo esc_attr( $pair['ru'] ); ?>"><input type="hidden" name="en_id" value="<?php echo esc_attr( $pair['en'] ); ?>"><?php wp_nonce_field( 'mvpb_unlink_pair_' . $pair['ru'] . '_' . $pair['en'] ); ?><button type="submit" class="button button-small">Отвязать</button></form></td>
 					</tr>
