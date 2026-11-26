@@ -3,7 +3,7 @@ Contributors: markvane
 Tags: polylang, multilingual, translations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 1.4.0
+Stable tag: 1.4.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
 
@@ -51,6 +51,12 @@ Both endpoints require the manage_options capability.
 * PHP 7.4+
 
 == Changelog ==
+
+= 1.4.1 =
+* Validate legacy pair candidates to reduce false positives from unrelated metadata.
+* Detect both JSON and PHP-serialized pair metadata when scheduling automatic synchronization.
+* Clear scheduled synchronization and cached pair data on plugin deactivation.
+
 
 = 1.4.0 =
 * Add dashboard management for creating, editing, and unlinking RU/EN page pairs.
