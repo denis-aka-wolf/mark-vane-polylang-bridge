@@ -18,10 +18,16 @@ Before publishing a plugin ZIP, perform these checks locally:
 Example package command from the repository root:
 
 ```sh
-zip -r markvane-polylang-bridge-1.4.1.zip markvane-polylang-bridge
+zip -r markvane-polylang-bridge-1.4.2.zip markvane-polylang-bridge
 ```
 
 Update the version in the command when preparing a later release.
+
+## Version 1.4.2 additional checks
+
+1. Confirm the admin fallback is registered after the initial scheduling hook and is throttled to one run per 60 seconds.
+2. Confirm a successful pair sync is verified from both RU and EN records and written to the activity log.
+3. Confirm language conflicts and unrelated translation groups remain untouched.
 
 ## Version 1.4.1 additional checks
 
