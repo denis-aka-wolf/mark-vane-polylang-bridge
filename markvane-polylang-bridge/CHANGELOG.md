@@ -1,3 +1,6 @@
+## 1.4.3
+- Run the throttled synchronization fallback during REST API initialization as well as admin requests, allowing REST-driven site operations to process pending pairs.
+
 ## 1.4.2
 - Add an admin-side synchronization fallback, throttled to one run per minute, for hosts where WP-Cron is delayed or disabled.
 - Verify every saved RU/EN relationship from both page records.
