@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Mark Vane Polylang Bridge
  * Description: Safely manages RU/EN translation pairs through Polylang.
- * Version: 1.4.3
+ * Version: 1.4.4
  * Author: Mark Vane
  * License: GPL-2.0-or-later
  * Text Domain: mark-vane-polylang-bridge
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class Mark_Vane_Polylang_Bridge {
-	const VERSION = '1.4.3';
+	const VERSION = '1.4.4';
 	const CRON_HOOK = 'mvpb_run_scheduled_sync';
 	const PAIR_CACHE_KEY = 'mvpb_pairs_cache';
 	const MANAGED_OPTION = 'mvpb_managed_pairs';
@@ -172,22 +172,42 @@ final class Mark_Vane_Polylang_Bridge {
 	}
 
 	public static function sync_legacy_pairs() {
-		if ( ! function_exists( 'pll_save_post_translations' ) || ! function_exists( 'pll_get_post_language' ) || ! function_exists( 'pll_set_post_language' ) || ! function_exists( 'pll_get_post_translations' ) || ! function_exists( 'pll_languages_list' ) ) {
-			return;
+		$stats = array(
+			'total' => 0,
+			'already_linked' => 0,
+			'repaired' => 0,
+			'skipped' => 0,
+			'failed' => 0,
+			'api_available' => true,
+		);
+
+		$required = array( 'pll_save_post_translations', 'pll_get_post_language', 'pll_set_post_language', 'pll_get_post_translations', 'pll_languages_list' );
+		foreach ( $required as $function_name ) {
+			if ( ! function_exists( $function_name ) ) {
+				$stats['api_available'] = false;
+				$stats['error'] = 'Polylang API недоступен: ' . $function_name;
+				return $stats;
+			}
 		}
 
 		$languages = pll_languages_list( array( 'fields' => 'slug' ) );
 		if ( ! in_array( 'ru', (array) $languages, true ) || ! in_array( 'en', (array) $languages, true ) ) {
-			return;
+			$stats['api_available'] = false;
+			$stats['error'] = 'В Polylang не найдены языки ru и en.';
+			return $stats;
 		}
 
-		foreach ( self::discover_pairs() as $pair ) {
-			$ru_id = $pair['ru'];
-			$en_id = $pair['en'];
-			$ru_translations = pll_get_post_translations( $ru_id );
-			$en_translations = pll_get_post_translations( $en_id );
+		$pairs = self::discover_pairs( true );
+		$stats['total'] = count( $pairs );
+
+		foreach ( $pairs as $pair ) {
+			$ru_id = absint( $pair['ru'] );
+			$en_id = absint( $pair['en'] );
+			$ru_translations = (array) pll_get_post_translations( $ru_id );
+			$en_translations = (array) pll_get_post_translations( $en_id );
 			$group_conflict = false;
-			foreach ( array( (array) $ru_translations, (array) $en_translations ) as $translation_map ) {
+
+			foreach ( array( $ru_translations, $en_translations ) as $translation_map ) {
 				foreach ( $translation_map as $translation_id ) {
 					if ( (int) $translation_id !== $ru_id && (int) $translation_id !== $en_id ) {
 						$group_conflict = true;
@@ -195,15 +215,16 @@ final class Mark_Vane_Polylang_Bridge {
 					}
 				}
 			}
+
 			if ( $group_conflict ) {
-				self::log_activity( 'sync_conflict', $ru_id, $en_id, 'Страница уже состоит в другой группе переводов.' );
+				$stats['skipped']++;
+				self::log_activity( 'sync_conflict', $ru_id, $en_id, 'Пропущено: страница уже входит в другую группу переводов.' );
 				continue;
 			}
+
 			$ru_lang = pll_get_post_language( $ru_id, 'slug' );
 			$en_lang = pll_get_post_language( $en_id, 'slug' );
 
-			// Fill only missing language assignments. Never silently overwrite
-			// an existing language choice made in the WordPress editor.
 			if ( ! $ru_lang ) {
 				pll_set_post_language( $ru_id, 'ru' );
 				$ru_lang = pll_get_post_language( $ru_id, 'slug' );
@@ -213,38 +234,39 @@ final class Mark_Vane_Polylang_Bridge {
 				$en_lang = pll_get_post_language( $en_id, 'slug' );
 			}
 
-			// A conflicting assignment needs a human decision, not an override.
 			if ( 'ru' !== $ru_lang || 'en' !== $en_lang ) {
+				$stats['skipped']++;
+				self::log_activity( 'sync_conflict', $ru_id, $en_id, 'Пропущено: конфликт языков (RU: ' . ( $ru_lang ? $ru_lang : 'не назначен' ) . ', EN: ' . ( $en_lang ? $en_lang : 'не назначен' ) . ').' );
 				continue;
 			}
 
+			// Check both directions. A correct RU map alone is not enough:
+			// Polylang must return the reciprocal EN -> RU relationship too.
+			$linked_from_ru = isset( $ru_translations['en'] ) && (int) $ru_translations['en'] === $en_id;
+			$linked_from_en = isset( $en_translations['ru'] ) && (int) $en_translations['ru'] === $ru_id;
 
-
-			$current = pll_get_post_translations( $ru_id );
-			if ( is_array( $current ) && isset( $current['ru'], $current['en'] )
-				&& (int) $current['ru'] === $ru_id && (int) $current['en'] === $en_id ) {
+			if ( $linked_from_ru && $linked_from_en ) {
+				$stats['already_linked']++;
+				self::log_activity( 'sync_verified', $ru_id, $en_id, 'Проверено: двусторонняя связь Polylang уже существует.' );
 				continue;
 			}
 
-			pll_save_post_translations(
-				array(
-					'ru' => $ru_id,
-					'en' => $en_id,
-				)
-			);
+			pll_save_post_translations( array( 'ru' => $ru_id, 'en' => $en_id ) );
 
-			// Verify the relationship from both sides. Polylang's save API does
-			// not return a success value, so read back the persisted translation map.
 			$saved_ru = (array) pll_get_post_translations( $ru_id );
 			$saved_en = (array) pll_get_post_translations( $en_id );
 			if ( isset( $saved_ru['en'], $saved_en['ru'] )
 				&& (int) $saved_ru['en'] === $en_id
 				&& (int) $saved_en['ru'] === $ru_id ) {
-				self::log_activity( 'sync_success', $ru_id, $en_id, 'Связь переводов подтверждена Polylang с обеих сторон.' );
+				$stats['repaired']++;
+				self::log_activity( 'sync_success', $ru_id, $en_id, 'Связь создана или восстановлена; двусторонняя проверка пройдена.' );
 			} else {
-				self::log_activity( 'sync_failed', $ru_id, $en_id, 'Polylang не подтвердил двустороннюю связь переводов.' );
+				$stats['failed']++;
+				self::log_activity( 'sync_failed', $ru_id, $en_id, 'Ошибка: Polylang не подтвердил двустороннюю связь после сохранения.' );
 			}
 		}
+
+		return $stats;
 	}
 
 
@@ -466,7 +488,7 @@ final class Mark_Vane_Polylang_Bridge {
 		<div class="wrap">
 			<h1>Mark Vane Polylang Bridge</h1>
 			<?php if ( isset( $_GET['mvpb_saved'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Настройки сохранены.</p></div><?php endif; ?>
-			<?php if ( isset( $_GET['mvpb_synced'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Синхронизация завершена.</p></div><?php endif; ?>
+			<?php if ( isset( $_GET['mvpb_synced'] ) ) : ?><div class="notice notice-success is-dismissible"><p><?php echo esc_html( sprintf( 'Синхронизация завершена. Проверено: %1$d; уже связаны: %2$d; восстановлено: %3$d; пропущено: %4$d; ошибок: %5$d.', isset( $_GET['mvpb_total'] ) ? absint( $_GET['mvpb_total'] ) : 0, isset( $_GET['mvpb_linked'] ) ? absint( $_GET['mvpb_linked'] ) : 0, isset( $_GET['mvpb_repaired'] ) ? absint( $_GET['mvpb_repaired'] ) : 0, isset( $_GET['mvpb_skipped'] ) ? absint( $_GET['mvpb_skipped'] ) : 0, isset( $_GET['mvpb_failed'] ) ? absint( $_GET['mvpb_failed'] ) : 0 ) ); ?></p></div><?php endif; ?>
 			<?php if ( isset( $_GET['mvpb_saved_pair'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Пара переводов создана.</p></div><?php endif; ?>
 			<?php if ( isset( $_GET['mvpb_unlinked'] ) ) : ?><div class="notice notice-success is-dismissible"><p>Связь удалена. Страницы и метаданные сохранены.</p></div><?php endif; ?>
 			<p>Плагин обнаруживает существующие пары страниц из старых метаданных и связывает их через штатный API Polylang. Содержимое страниц, URL, меню и исходные метаданные не изменяются.</p>
@@ -567,9 +589,28 @@ final class Mark_Vane_Polylang_Bridge {
 			wp_die( esc_html__( 'Недостаточно прав.', 'mark-vane-polylang-bridge' ), 403 );
 		}
 		check_admin_referer( 'mvpb_sync' );
-		self::sync_legacy_pairs();
-		self::log_activity( 'manual_sync', 0, 0, 'Ручная синхронизация запущена.' );
-		wp_safe_redirect( add_query_arg( 'mvpb_synced', '1', admin_url( 'admin.php?page=mark-vane-polylang-bridge' ) ) );
+		$stats = self::sync_legacy_pairs();
+		$message = sprintf(
+			'Проверено: %1$d; уже связаны: %2$d; восстановлено: %3$d; пропущено: %4$d; ошибок: %5$d.',
+			$stats['total'],
+			$stats['already_linked'],
+			$stats['repaired'],
+			$stats['skipped'],
+			$stats['failed']
+		);
+		if ( empty( $stats['api_available'] ) ) {
+			$message = isset( $stats['error'] ) ? $stats['error'] : 'Polylang API недоступен.';
+		}
+		self::log_activity( 'manual_sync_summary', 0, 0, $message );
+		$args = array(
+			'mvpb_synced' => '1',
+			'mvpb_total' => $stats['total'],
+			'mvpb_linked' => $stats['already_linked'],
+			'mvpb_repaired' => $stats['repaired'],
+			'mvpb_skipped' => $stats['skipped'],
+			'mvpb_failed' => $stats['failed'],
+		);
+		wp_safe_redirect( add_query_arg( $args, admin_url( 'admin.php?page=mark-vane-polylang-bridge' ) ) );
 		exit;
 	}
 
@@ -596,15 +637,23 @@ final class Mark_Vane_Polylang_Bridge {
 
 	public static function rest_get_pairs() {
 		$result = array();
-		foreach ( self::discover_pairs() as $pair ) {
+		foreach ( self::discover_pairs( true ) as $pair ) {
+			$ru_id = absint( $pair['ru'] );
+			$en_id = absint( $pair['en'] );
+			$ru_map = function_exists( 'pll_get_post_translations' ) ? (array) pll_get_post_translations( $ru_id ) : array();
+			$en_map = function_exists( 'pll_get_post_translations' ) ? (array) pll_get_post_translations( $en_id ) : array();
 			$result[] = array(
-				'ru' => $pair['ru'],
-				'en' => $pair['en'],
-				'ru_title' => get_the_title( $pair['ru'] ),
-				'en_title' => get_the_title( $pair['en'] ),
-				'ru_language' => function_exists( 'pll_get_post_language' ) ? pll_get_post_language( $pair['ru'], 'slug' ) : null,
-				'en_language' => function_exists( 'pll_get_post_language' ) ? pll_get_post_language( $pair['en'], 'slug' ) : null,
-				'translations' => function_exists( 'pll_get_post_translations' ) ? pll_get_post_translations( $pair['ru'] ) : array(),
+				'ru' => $ru_id,
+				'en' => $en_id,
+				'ru_title' => get_the_title( $ru_id ),
+				'en_title' => get_the_title( $en_id ),
+				'ru_language' => function_exists( 'pll_get_post_language' ) ? pll_get_post_language( $ru_id, 'slug' ) : null,
+				'en_language' => function_exists( 'pll_get_post_language' ) ? pll_get_post_language( $en_id, 'slug' ) : null,
+				'ru_translations' => $ru_map,
+				'en_translations' => $en_map,
+				'ru_to_en_lookup' => function_exists( 'pll_get_post' ) ? (int) pll_get_post( $ru_id, 'en' ) : null,
+				'en_to_ru_lookup' => function_exists( 'pll_get_post' ) ? (int) pll_get_post( $en_id, 'ru' ) : null,
+				'is_symmetric' => isset( $ru_map['en'], $en_map['ru'] ) && (int) $ru_map['en'] === $en_id && (int) $en_map['ru'] === $ru_id,
 			);
 		}
 		return rest_ensure_response( $result );
