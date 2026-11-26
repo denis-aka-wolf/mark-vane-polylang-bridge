@@ -1,3 +1,10 @@
+## 1.4.5
+- Return the actual synchronization statistics from the REST sync endpoint.
+- Return HTTP 503 when the Polylang API or required languages are unavailable.
+- Return HTTP 409 when any pair was skipped or failed, instead of reporting a false success.
+- Record REST synchronization summaries and unexpected failures in the activity log.
+- Catch unexpected synchronization exceptions and return a controlled REST error.
+
 ## 1.4.4
 - Return synchronization counters for checked, already linked, repaired, skipped, and failed pairs.
 - Verify translation relationships in both directions and repair incomplete one-sided associations.
