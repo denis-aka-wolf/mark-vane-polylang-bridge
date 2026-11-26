@@ -1,3 +1,8 @@
+## 1.4.5
+- Make REST synchronization report its actual result and counters.
+- Return explicit HTTP errors for unavailable Polylang, skipped/failed pairs, and unexpected exceptions.
+- Record REST synchronization outcomes in the activity log.
+
 # Changelog
 
 ## 1.4.0
